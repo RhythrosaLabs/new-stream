@@ -110,7 +110,7 @@ def display_3d_model(glb_bytes, caption=None):
         st.caption(caption)
 
 # Initialize LangChain Agent for Web Search
-@st.experimental_singleton
+@st.singleton
 def init_langchain_agent(openai_key):
     """Initialize LangChain agent with DuckDuckGo search."""
     llm = ChatOpenAI(model_name="gpt-4-turbo", openai_api_key=openai_key, temperature=0.7)
