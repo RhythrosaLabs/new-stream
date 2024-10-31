@@ -1,7 +1,7 @@
 import streamlit as st
 import openai
 import os
-import tempfile
+from openai import OpenAI
 from langchain.agents import initialize_agent, Tool, AgentType
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.chat_models import ChatOpenAI
@@ -14,7 +14,6 @@ from langchain.embeddings import OpenAIEmbeddings
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import RetrievalQA
 from langchain.prompts import MessagesPlaceholder
-from langchain.docstore.document import Document
 
 # Set up Streamlit page configuration
 st.set_page_config(page_title="All-in-One Chat Assistant", page_icon="🤖")
@@ -35,6 +34,7 @@ if not openai_api_key:
 # Set OpenAI API key
 os.environ["OPENAI_API_KEY"] = openai_api_key
 openai.api_key = openai_api_key
+client = OpenAI(api_key=openai_api_key)
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -48,27 +48,18 @@ if "vectorstore" not in st.session_state:
 
 # If a document is uploaded, process it
 if uploaded_file:
-    file_extension = uploaded_file.name.split(".")[-1].lower()
-    if file_extension == "pdf":
-        from langchain.document_loaders import PyPDFLoader
-        # Save the uploaded PDF to a temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-            tmp_file.write(uploaded_file.read())
-            tmp_file_path = tmp_file.name
-        loader = PyPDFLoader(tmp_file_path)
+    try:
+        loader = UnstructuredFileLoader(uploaded_file)
         documents = loader.load()
-        os.unlink(tmp_file_path)  # Delete the temporary file
-    else:
-        # For txt and md files
-        content = uploaded_file.read().decode('utf-8')
-        documents = [Document(page_content=content, metadata={"source": uploaded_file.name})]
-
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    docs = text_splitter.split_documents(documents)
-    embeddings = OpenAIEmbeddings()
-    vectorstore = FAISS.from_documents(docs, embeddings)
-    st.session_state.vectorstore = vectorstore
-    st.session_state.document_content = "Document uploaded and processed successfully."
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        docs = text_splitter.split_documents(documents)
+        embeddings = OpenAIEmbeddings()
+        vectorstore = FAISS.from_documents(docs, embeddings)
+        st.session_state.vectorstore = vectorstore
+        st.session_state.document_content = "Document uploaded and processed successfully."
+    except Exception as e:
+        st.error(f"Error processing document: {e}")
+        st.stop()
 
 # Define tools for the agent
 tools = []
@@ -83,13 +74,18 @@ tools.append(search_tool)
 
 # Image Generation Tool
 def generate_image(prompt):
-    response = openai.Image.create(
-        prompt=prompt,
-        n=1,
-        size="1024x1024"
-    )
-    image_url = response['data'][0]['url']
-    return image_url
+    try:
+        response = client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            size="1024x1024",
+            quality="standard",
+            n=1,
+        )
+        image_url = response.data[0].url
+        return image_url
+    except Exception as e:
+        return f"Error generating image: {e}"
 
 image_generation_tool = Tool(
     name="image_generation",
@@ -104,7 +100,7 @@ def answer_question_about_document(question):
         return "No document has been uploaded. Please upload a document to use this feature."
     retriever = st.session_state.vectorstore.as_retriever()
     qa_chain = RetrievalQA.from_chain_type(
-        llm=ChatOpenAI(model_name="gpt-3.5-turbo"),
+        llm=ChatOpenAI(model_name="gpt-4o-mini"),
         chain_type="stuff",
         retriever=retriever
     )
@@ -123,7 +119,7 @@ memory = ConversationBufferMemory(memory_key="chat_history", return_messages=Tru
 agent_kwargs = {
     "extra_prompt_messages": [MessagesPlaceholder(variable_name="chat_history")]
 }
-llm = ChatOpenAI(model_name="gpt-3.5-turbo", streaming=True)
+llm = ChatOpenAI(model_name="gpt-4o-mini", streaming=True)
 agent = initialize_agent(
     tools,
     llm,
@@ -156,8 +152,8 @@ if prompt := st.chat_input("Type your message here..."):
         except Exception as e:
             response = f"An error occurred: {e}"
         st.session_state.messages.append(AIMessage(content=response))
-        st.write(response)
-
-        # If the response contains an image URL, display the image
+        # Check if the response is an image URL
         if response.startswith("http"):
-            st.image(response)
+            st.image(response, caption=prompt)
+        else:
+            st.write(response)
