@@ -79,4 +79,3 @@ if uploaded_file and question and anthropic_api_key:
     )
     st.write("### Answer")
     st.write(response.completion)
-
