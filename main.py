@@ -12,8 +12,6 @@ from langchain.vectorstores import FAISS
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import RetrievalQA
-from langchain import LLMChain, PromptTemplate
-from langchain.utilities import SerpAPIWrapper
 from langchain.prompts import MessagesPlaceholder
 
 # Set up Streamlit page configuration
@@ -23,9 +21,7 @@ st.set_page_config(page_title="All-in-One Chat Assistant", page_icon="🤖")
 with st.sidebar:
     st.header("🔑 API Keys")
     openai_api_key = st.text_input("OpenAI API Key", type="password")
-    anthropic_api_key = st.text_input("Anthropic API Key (Optional)", type="password")
     st.markdown("[Get an OpenAI API key](https://platform.openai.com/account/api-keys)")
-    st.markdown("[Get an Anthropic API key](https://console.anthropic.com/)")
     st.markdown("---")
     uploaded_file = st.file_uploader("📄 Upload a document for Q&A", type=["txt", "pdf", "md"])
 
@@ -69,7 +65,7 @@ tools = []
 
 # Web Search Tool
 search_tool = Tool(
-    name="Web Search",
+    name="web_search",
     func=DuckDuckGoSearchRun().run,
     description="Useful for answering questions about current events or the internet."
 )
@@ -87,7 +83,7 @@ def generate_image(prompt):
     return image_url
 
 image_generation_tool = Tool(
-    name="Image Generation",
+    name="image_generation",
     func=generate_image,
     description="Generates an image based on the prompt."
 )
@@ -99,7 +95,7 @@ def answer_question_about_document(question):
         return "No document has been uploaded. Please upload a document to use this feature."
     retriever = st.session_state.vectorstore.as_retriever()
     qa_chain = RetrievalQA.from_chain_type(
-        llm=ChatOpenAI(model_name="gpt-3.5-turbo"),
+        llm=ChatOpenAI(model_name="gpt-4o-mini"),
         chain_type="stuff",
         retriever=retriever
     )
@@ -107,7 +103,7 @@ def answer_question_about_document(question):
     return answer
 
 document_qa_tool = Tool(
-    name="Document QA",
+    name="document_qa",
     func=answer_question_about_document,
     description="Useful for answering questions about the uploaded document."
 )
@@ -118,7 +114,7 @@ memory = ConversationBufferMemory(memory_key="chat_history", return_messages=Tru
 agent_kwargs = {
     "extra_prompt_messages": [MessagesPlaceholder(variable_name="chat_history")]
 }
-llm = ChatOpenAI(model_name="gpt-3.5-turbo", streaming=True)
+llm = ChatOpenAI(model_name="gpt-4o-mini", streaming=True)
 agent = initialize_agent(
     tools,
     llm,
