@@ -68,7 +68,7 @@ if st.button("Send") and user_input:
             image_response = openai.Image.create(
                 prompt=user_input,
                 n=1,
-                model="dall-e-3"
+                size="1024x1024"
             )
             image_url = image_response['data'][0]['url']
             response_content = f"![Generated Image]({image_url})"
@@ -95,8 +95,8 @@ if st.button("Send") and user_input:
             if uploaded_image:
                 base64_image = base64.b64encode(uploaded_image.read()).decode()
                 vision_prompt = "What is shown in this image?"
-                vision_response = openai.ChatCompletion.create(
-                    model="gpt-4-vision-preview",
+                vision_response = openai.Chat.create(
+                    model="gpt-4-vision",
                     messages=[{"role": "user", "content": vision_prompt}]
                 )
                 response_content = vision_response['choices'][0]['message']['content']
@@ -104,8 +104,8 @@ if st.button("Send") and user_input:
                 response_content = "Please upload an image for vision analysis."
 
         elif action == "text_to_speech":
-            tts_response = openai.TextToSpeech.create(
-                text=user_input,
+            tts_response = openai.Audio.create(
+                input=user_input,
                 voice="female",
                 model="tts-1-hd"
             )
@@ -113,7 +113,7 @@ if st.button("Send") and user_input:
             response_content = f"[Generated Speech]({audio_url})"
 
         else:  # Default to OpenAI Chat
-            chat_response = openai.ChatCompletion.create(
+            chat_response = openai.Chat.create(
                 model="gpt-4",
                 messages=st.session_state["messages"]
             )
