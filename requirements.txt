@@ -11,4 +11,4 @@ stability-sdk
 PyPDF2
 python-docx
 faiss-cpu
-unstructured
+unstructured[md]
