@@ -132,30 +132,37 @@ with tabs[2]:
         st.chat_message(msg["role"]).write(msg["content"])
     
     if prompt := st.chat_input(placeholder="Who won the Women's U.S. Open in 2018?"):
-        st.session_state.search_messages.append({"role": "user", "content": prompt})
-        st.chat_message("user").write(prompt)
-    
         if not openai_api_key_search:
             st.info("Please add your OpenAI API key in the sidebar to continue.")
             st.stop()
-    
+        
         try:
+            # Initialize LangChain LLM
             llm = ChatOpenAI(
                 model_name="gpt-3.5-turbo", 
                 openai_api_key=openai_api_key_search, 
                 streaming=True
             )
+            # Initialize the Search tool
             search = DuckDuckGoSearchRun(name="Search")
+            # Initialize the agent with only the Search tool
             search_agent = initialize_agent(
                 [search], 
                 llm, 
                 agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, 
                 handle_parsing_errors=True
             )
-            with st.chat_message("assistant"):
-                st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
-                response = search_agent.run(st.session_state.search_messages, callbacks=[st_cb])
-                st.session_state.search_messages.append({"role": "assistant", "content": response})
-                st.chat_message("assistant").write(response)
+            
+            # Append user message to session state
+            st.session_state.search_messages.append({"role": "user", "content": prompt})
+            st.chat_message("user").write(prompt)
+            
+            # Run the agent with the latest user prompt
+            response = search_agent.run(prompt, callbacks=[])
+            
+            # Append assistant response to session state
+            st.session_state.search_messages.append({"role": "assistant", "content": response})
+            st.chat_message("assistant").write(response)
+        
         except Exception as e:
             st.error(f"An error occurred: {e}")
