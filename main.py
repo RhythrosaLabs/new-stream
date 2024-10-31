@@ -1,23 +1,3 @@
-"""
-All-in-One AI Assistant
-========================
-
-Integrates:
-- OpenAI's GPT models for general chat.
-- Anthropic's Claude for File Q&A.
-- LangChain for Web Search.
-- Stability AI's Stable Image Ultra for Image Generation.
-
-Features:
-- Single chat interface to interact with all functionalities.
-- Upload documents (PDF, TXT, MD) for Q&A.
-- Generate images based on text prompts via commands.
-- Perform web searches for up-to-date information.
-
-Author: Your Name
-Date: 2024-10-31
-"""
-
 import streamlit as st
 import openai
 import anthropic
@@ -97,7 +77,6 @@ if not openai_api_key:
 
 if not stability_api_key:
     st.warning("Please enter your Stability AI API key to enable Image Generation.")
-    # Note: Allow other functionalities to work, but image generation won't be available
 
 # Set OpenAI API key
 os.environ["OPENAI_API_KEY"] = openai_api_key
@@ -179,49 +158,38 @@ def generate_image(prompt: str) -> str:
     if not stability_api_key:
         return "Stability AI API key not provided."
     
+    # API endpoint for Stable Image Ultra
     url = "https://api.stability.ai/v2beta/stable-image/generate/ultra"
     headers = {
-        "authorization": f"Bearer {stability_api_key}",
-        "accept": "application/json"  # Change to "application/json" to receive base64 encoded image
+        "Authorization": f"Bearer {stability_api_key}",
+        "Content-Type": "application/json",
     }
-    files = {
-        "none": ''  # As per API documentation
-    }
+    
+    # Prepare data payload as JSON
     data = {
         "prompt": prompt,
-        "output_format": "png",     # Options: "jpeg", "png", "webp"
-        "size": "1024x1024",        # Options: "1024x1024", "1024x1792", "1792x1024"
-        "quality": "standard"       # Options: "standard", "hd"
+        "output_format": "base64",  # Specified to return a base64-encoded image
+        "size": "1024x1024",        # Change as per user preference
+        "quality": "standard"       # Other options: "hd"
     }
     
     try:
-        response = requests.post(
-            url,
-            headers=headers,
-            files=files,
-            data=data
-        )
+        response = requests.post(url, headers=headers, json=data)
         
         if response.status_code == 200:
-            # Expecting base64 encoded image in JSON response
+            # Successful response with base64 image data
             response_json = response.json()
-            # Assuming the response contains the image as base64
-            # The exact field depends on Stability AI's API
-            # Adjust accordingly based on actual response structure
-            # For example, assuming 'data' field contains the image
-            image_base64 = response_json.get('data', '')
+            image_base64 = response_json.get("data", "")
+            
             if image_base64:
+                # Returning data URL for display
                 data_url = f"data:image/png;base64,{image_base64}"
                 logger.info("Image generated successfully.")
                 return data_url
             else:
-                return "Error generating image: No image data found in response."
+                return "Error: No image data received."
         else:
-            # Attempt to parse error message
-            try:
-                error_message = response.json().get('error', 'Unknown error occurred.')
-            except:
-                error_message = "Unknown error occurred."
+            error_message = response.json().get("error", "Unknown error.")
             logger.error(f"Error generating image: {error_message}")
             return f"Error generating image: {error_message}"
     except Exception as e:
