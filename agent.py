@@ -5,8 +5,9 @@ from langchain.memory import ConversationBufferMemory
 from langchain.prompts import MessagesPlaceholder
 from langchain.schema import SystemMessage
 from langchain.callbacks import StreamlitCallbackHandler
+from langchain.chat_models import ChatOpenAI  # Add this import
 
-def initialize_langchain_agent(tools, model_name="gpt-4o-mini"):
+def initialize_langchain_agent(tools, model_name="gpt-4o-mini", openai_api_key=None):
     """
     Initialize the LangChain agent with the provided tools and memory.
     """
@@ -14,7 +15,7 @@ def initialize_langchain_agent(tools, model_name="gpt-4o-mini"):
     agent_kwargs = {
         "extra_prompt_messages": [MessagesPlaceholder(variable_name="chat_history")]
     }
-    llm = ChatOpenAI(model_name=model_name, streaming=True)
+    llm = ChatOpenAI(model_name=model_name, streaming=True, openai_api_key=openai_api_key)
 
     agent = initialize_agent(
         tools=tools,
