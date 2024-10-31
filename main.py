@@ -86,9 +86,12 @@ with tab1:
                 # General chat using OpenAI
                 response = openai.ChatCompletion.create(
                     model="gpt-3.5-turbo",
-                    messages=st.session_state.messages
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant."},
+                        *st.session_state.messages,
+                    ]
                 )
-                msg = response.choices[0].message['content']
+                msg = response['choices'][0]['message']['content']
                 st.session_state.messages.append({"role": "assistant", "content": msg})
 
             st.experimental_rerun()
