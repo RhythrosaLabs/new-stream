@@ -2,167 +2,137 @@ import streamlit as st
 from openai import OpenAI
 import anthropic
 from langchain.agents import initialize_agent, AgentType
-from langchain.callbacks import StreamlitCallbackHandler
-from langchain.chat_models import ChatOpenAI
 from langchain.tools import DuckDuckGoSearchRun
+from langchain.chat_models import ChatOpenAI
 
-# Sidebar for API Keys
+# Initialize Streamlit session state
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
+if "uploaded_file_content" not in st.session_state:
+    st.session_state["uploaded_file_content"] = None
+
+# Sidebar Configuration
 with st.sidebar:
-    st.header("API Keys")
+    st.header("🔑 API Keys")
     
-    # OpenAI API Key for Chatbot
-    openai_api_key_chatbot = st.text_input(
-        "OpenAI API Key (Chatbot)", 
-        key="chatbot_api_key", 
-        type="password"
+    # OpenAI API Key
+    openai_api_key = st.text_input(
+        "OpenAI API Key", 
+        type="password", 
+        help="Enter your OpenAI API key."
     )
     st.markdown("[Get an OpenAI API key](https://platform.openai.com/account/api-keys)")
-
-    # Anthropic API Key for File Q&A
+    
+    st.markdown("---")
+    
+    # Anthropic API Key
     anthropic_api_key = st.text_input(
-        "Anthropic API Key (File Q&A)", 
-        key="anthropic_api_key", 
-        type="password"
+        "Anthropic API Key", 
+        type="password", 
+        help="Enter your Anthropic API key."
     )
     st.markdown("[Get an Anthropic API key](https://www.anthropic.com/account/api-keys)")
-
-    # OpenAI API Key for LangChain Search
-    openai_api_key_search = st.text_input(
-        "OpenAI API Key (LangChain Search)", 
-        key="langchain_search_api_key_openai", 
-        type="password"
-    )
-    st.markdown("[Get an OpenAI API key](https://platform.openai.com/account/api-keys)")
-
-    # GitHub Links
+    
     st.markdown("---")
-    st.markdown("[View Chatbot Source Code](https://github.com/streamlit/llm-examples/blob/main/Chatbot.py)")
-    st.markdown("[View File Q&A Source Code](https://github.com/streamlit/llm-examples/blob/main/pages/1_File_Q%26A.py)")
-    st.markdown("[View LangChain Search Source Code](https://github.com/streamlit/llm-examples/blob/main/pages/2_Chat_with_search.py)")
-    st.markdown("[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/streamlit/llm-examples?quickstart=1)")
+    
+    # GitHub Links
+    st.markdown("[View Source Code on GitHub](https://github.com/your-repo)")
+    st.markdown("[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://github.com/codespaces/new)")
 
 # Main Application
-st.title("💬 Multi-Function Chat Application")
+st.title("💬 Unified Chatbot Application")
 
-# Tabs for different functionalities
-tabs = st.tabs(["OpenAI Chatbot", "Anthropic File Q&A", "LangChain Chat with Search"])
+# File Uploader
+st.header("📄 Upload a File for Analysis")
+uploaded_file = st.file_uploader("Upload a text or markdown file", type=["txt", "md"])
 
-## OpenAI Chatbot Tab
-with tabs[0]:
-    st.header("💬 Chatbot")
-    
-    if "chatbot_messages" not in st.session_state:
-        st.session_state["chatbot_messages"] = [{"role": "assistant", "content": "How can I help you?"}]
-    
-    for msg in st.session_state.chatbot_messages:
-        st.chat_message(msg["role"]).write(msg["content"])
-    
-    if prompt := st.chat_input("Type your message here..."):
-        if not openai_api_key_chatbot:
-            st.info("Please add your OpenAI API key in the sidebar to continue.")
-            st.stop()
-        
-        try:
-            client = OpenAI(api_key=openai_api_key_chatbot)
-            st.session_state.chatbot_messages.append({"role": "user", "content": prompt})
-            st.chat_message("user").write(prompt)
-            
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo", 
-                messages=st.session_state.chatbot_messages
-            )
-            msg = response.choices[0].message.content
-            st.session_state.chatbot_messages.append({"role": "assistant", "content": msg})
-            st.chat_message("assistant").write(msg)
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
+if uploaded_file:
+    file_content = uploaded_file.read().decode("utf-8")
+    st.session_state["uploaded_file_content"] = file_content
+    st.success(f"Uploaded `{uploaded_file.name}` successfully!")
 
-## Anthropic File Q&A Tab
-with tabs[1]:
-    st.header("📝 File Q&A with Anthropic")
+# Display Chat Messages
+st.header("💬 Conversation")
+for msg in st.session_state["messages"]:
+    if msg["role"] == "user":
+        st.markdown(f"**You:** {msg['content']}")
+    else:
+        st.markdown(f"**Assistant:** {msg['content']}")
+
+# Chat Input
+prompt = st.text_input("Type your message here...", key="chat_input")
+
+def is_search_query(query):
+    search_keywords = ["search for", "look up", "find", "google", "web search", "search the web"]
+    return any(keyword in query.lower() for keyword in search_keywords)
+
+def is_file_query(query):
+    file_keywords = ["analyze", "summary", "summarize", "tell me about", "information from", "details of"]
+    return any(keyword in query.lower() for keyword in file_keywords)
+
+if st.button("Send") and prompt:
+    st.session_state["messages"].append({"role": "user", "content": prompt})
     
-    uploaded_file = st.file_uploader("Upload an article", type=("txt", "md"))
-    
-    question = st.text_input(
-        "Ask something about the article",
-        placeholder="Can you give me a short summary?",
-        disabled=not uploaded_file,
-    )
-    
-    if uploaded_file and question:
+    # Determine which API to use
+    if is_file_query(prompt) and st.session_state["uploaded_file_content"]:
         if not anthropic_api_key:
-            st.info("Please add your Anthropic API key in the sidebar to continue.")
+            response = "❌ Please provide your Anthropic API key in the sidebar to use file analysis."
         else:
             try:
-                article = uploaded_file.read().decode()
-                prompt = f"""{anthropic.HUMAN_PROMPT} Here's an article:\n\n
-                {article}\n\n\n\n{question}{anthropic.AI_PROMPT}"""
-            
                 client = anthropic.Client(api_key=anthropic_api_key)
-                response = client.completions.create(
-                    prompt=prompt,
+                prompt_text = f"""{anthropic.HUMAN_PROMPT} {st.session_state["uploaded_file_content"]}\n\n{prompt}{anthropic.AI_PROMPT}"""
+                response_obj = client.completions.create(
+                    prompt=prompt_text,
+                    model="claude-2",  # Use "claude-v1" if "claude-2" is unavailable
                     stop_sequences=[anthropic.HUMAN_PROMPT],
-                    model="claude-2",  # Updated model name
-                    max_tokens_to_sample=100,
+                    max_tokens_to_sample=150,
                 )
-                st.write("### Answer")
-                st.write(response.completion)
-            except anthropic.NotFoundError as e:
-                st.error(f"Model not found: {e}")
+                response = response_obj.completion.strip()
+            except anthropic.NotFoundError:
+                response = "❌ The specified model was not found. Please check the model name."
             except anthropic.AuthenticationError:
-                st.error("Authentication failed. Please check your API key.")
+                response = "❌ Authentication failed. Please verify your Anthropic API key."
             except Exception as e:
-                st.error(f"An unexpected error occurred: {e}")
+                response = f"❌ An unexpected error occurred: {e}"
+    elif is_search_query(prompt):
+        if not openai_api_key:
+            response = "❌ Please provide your OpenAI API key in the sidebar to perform web searches."
+        else:
+            try:
+                llm = ChatOpenAI(
+                    model_name="gpt-3.5-turbo", 
+                    openai_api_key=openai_api_key, 
+                    streaming=False
+                )
+                search = DuckDuckGoSearchRun()
+                search_agent = initialize_agent(
+                    [search],
+                    llm,
+                    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+                    verbose=False
+                )
+                search_query = prompt
+                search_result = search_agent.run(search_query)
+                response = search_result
+            except Exception as e:
+                response = f"❌ An error occurred during web search: {e}"
+    else:
+        if not openai_api_key:
+            response = "❌ Please provide your OpenAI API key in the sidebar to continue chatting."
+        else:
+            try:
+                client = OpenAI(api_key=openai_api_key)
+                messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state["messages"]]
+                response_obj = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=messages
+                )
+                response = response_obj.choices[0].message.content.strip()
+            except Exception as e:
+                response = f"❌ An error occurred during chat: {e}"
+    
+    # Append assistant's response to messages
+    st.session_state["messages"].append({"role": "assistant", "content": response})
 
-## LangChain Chat with Search Tab
-with tabs[2]:
-    st.header("🔎 LangChain - Chat with Search")
-    
-    st.markdown("""
-    In this example, we're using `StreamlitCallbackHandler` to display the thoughts and actions of an agent in an interactive Streamlit app.
-    Try more LangChain 🤝 Streamlit Agent examples at [github.com/langchain-ai/streamlit-agent](https://github.com/langchain-ai/streamlit-agent).
-    """)
-    
-    if "search_messages" not in st.session_state:
-        st.session_state["search_messages"] = [
-            {"role": "assistant", "content": "Hi, I'm a chatbot who can search the web. How can I help you?"}
-        ]
-    
-    for msg in st.session_state.search_messages:
-        st.chat_message(msg["role"]).write(msg["content"])
-    
-    if prompt := st.chat_input(placeholder="Who won the Women's U.S. Open in 2018?"):
-        if not openai_api_key_search:
-            st.info("Please add your OpenAI API key in the sidebar to continue.")
-            st.stop()
-        
-        try:
-            # Initialize LangChain LLM
-            llm = ChatOpenAI(
-                model_name="gpt-3.5-turbo", 
-                openai_api_key=openai_api_key_search, 
-                streaming=True
-            )
-            # Initialize the Search tool
-            search = DuckDuckGoSearchRun(name="Search")
-            # Initialize the agent with only the Search tool
-            search_agent = initialize_agent(
-                [search], 
-                llm, 
-                agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, 
-                handle_parsing_errors=True
-            )
-            
-            # Append user message to session state
-            st.session_state.search_messages.append({"role": "user", "content": prompt})
-            st.chat_message("user").write(prompt)
-            
-            # Run the agent with the latest user prompt
-            response = search_agent.run(prompt, callbacks=[])
-            
-            # Append assistant response to session state
-            st.session_state.search_messages.append({"role": "assistant", "content": response})
-            st.chat_message("assistant").write(response)
-        
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
+    # Clear the input field
+    st.experimental_rerun()
