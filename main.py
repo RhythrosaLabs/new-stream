@@ -35,22 +35,22 @@ if prompt := st.chat_input("Type your command here..."):
     st.session_state["messages"].append({"role": "user", "content": prompt})
     st.chat_message("user").write(prompt)
 
-    # Check API keys
+    # Ensure at least one API key is provided
     if not (openai_api_key or anthropic_api_key):
         st.info("Please add at least one API key to continue.")
         st.stop()
     
-    # Use GPT-4o-mini to analyze and determine the action
+    # Use GPT-4o-mini to analyze and determine the required action
     client = OpenAI(api_key=openai_api_key)
-    analysis_prompt = f"Determine the appropriate model to handle the following command:\n\n'{prompt}'\n\nOptions: 'openai' for general chat, 'anthropic' for file Q&A, 'search' for web search."
+    analysis_prompt = f"Analyze the following user request to determine the appropriate task. Determine if it's a general chat, a web search, or a file analysis request. Here is the request:\n\n'{prompt}'"
     analysis_response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "system", "content": analysis_prompt}]
     )
     model_decision = analysis_response.choices[0].message.content.strip().lower()
 
-    # OpenAI Chat
-    if model_decision == "openai" and openai_api_key:
+    # OpenAI Chat (General Chat)
+    if "general chat" in model_decision and openai_api_key:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=st.session_state.messages
@@ -60,7 +60,7 @@ if prompt := st.chat_input("Type your command here..."):
         st.chat_message("assistant").write(msg)
     
     # Anthropic File Q&A
-    elif model_decision == "anthropic" and anthropic_api_key and uploaded_file:
+    elif "file analysis" in model_decision and anthropic_api_key and uploaded_file:
         article = uploaded_file.read().decode()
         question = prompt
         anthropic_prompt = f"{anthropic.HUMAN_PROMPT} Here's an article:\n\n{article}\n\n{question}{anthropic.AI_PROMPT}"
@@ -76,8 +76,8 @@ if prompt := st.chat_input("Type your command here..."):
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("assistant").write(msg)
     
-    # LangChain with DuckDuckGo Search
-    elif model_decision == "search" and openai_api_key:
+    # LangChain with DuckDuckGo Search (Web Search)
+    elif "web search" in model_decision and openai_api_key:
         llm = ChatOpenAI(model_name="gpt-4o-mini", openai_api_key=openai_api_key, streaming=True)
         search = DuckDuckGoSearchRun(name="Search")
         search_agent = initialize_agent([search], llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, handle_parsing_errors=True)
@@ -87,4 +87,4 @@ if prompt := st.chat_input("Type your command here..."):
             st.session_state.messages.append({"role": "assistant", "content": response})
             st.write(response)
     else:
-        st.write("### Unable to determine the model based on the prompt. Please specify 'openai', 'anthropic', or 'search' if needed.")
+        st.write("### Unable to determine the action based on the prompt. Please ensure the request is clear.")
