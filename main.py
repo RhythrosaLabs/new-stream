@@ -63,7 +63,10 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### Additional Tools Coming Soon!")
 
+# ============================
 # Validate API Keys
+# ============================
+
 if not openai_api_key:
     st.warning("Please enter your OpenAI API key to use the app.")
     st.stop()
@@ -71,14 +74,25 @@ if not openai_api_key:
 if not anthropic_api_key:
     st.warning("Please enter your Anthropic API key to enable Document Q&A.")
     # Depending on your needs, you might want to allow the app to continue without Anthropic.
+    # For this example, we'll allow it to continue but disable document Q&A.
 
-# Set OpenAI and Anthropic API keys
+# ============================
+# Set API Keys
+# ============================
+
 os.environ["OPENAI_API_KEY"] = openai_api_key
 openai.api_key = openai_api_key
 
-anthropic_client = anthropic.Client(anthropic_api_key) if anthropic_api_key else None
+try:
+    anthropic_client = anthropic.Client(anthropic_api_key) if anthropic_api_key else None
+except Exception as e:
+    st.error(f"Failed to initialize Anthropic client: {e}")
+    anthropic_client = None
 
-# Initialize session state for messages and document processing
+# ============================
+# Initialize Session State
+# ============================
+
 if "messages" not in st.session_state:
     st.session_state.messages = [
         SystemMessage(content="You are an assistant that can chat, generate images, analyze documents, and search the web.")
