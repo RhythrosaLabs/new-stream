@@ -85,10 +85,14 @@ with st.form("chat_form", clear_on_submit=True):
         # Append user message to session state
         st.session_state["messages"].append({"role": "user", "content": prompt})
 
-        # Determine intent
+        # ------------------------
+        # Intent Detection
+        # ------------------------
+        # Define keywords for intent detection
         search_keywords = ["search for", "look up", "find", "google", "web search", "search the web"]
         file_keywords = ["analyze", "summary", "summarize", "tell me about", "information from", "details of"]
 
+        # Determine intent
         is_search = any(keyword in prompt.lower() for keyword in search_keywords)
         is_file_query = any(keyword in prompt.lower() for keyword in file_keywords)
 
@@ -165,4 +169,9 @@ with st.form("chat_form", clear_on_submit=True):
         # Append assistant's response to session state
         st.session_state["messages"].append({"role": "assistant", "content": response})
 
-        # No need for st.experimental_rerun(); Streamlit will handle rerun automatically
+        # Optionally, display the response immediately
+        if response:
+            if response.startswith("❌"):
+                st.error(response)
+            else:
+                st.markdown(f"**Assistant:** {response}")
