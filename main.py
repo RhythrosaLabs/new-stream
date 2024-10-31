@@ -11,7 +11,7 @@ Integrates:
 Features:
 - Single chat interface to interact with all functionalities.
 - Upload documents (PDF, TXT, MD) for Q&A.
-- Generate images based on text prompts.
+- Generate images based on text prompts via commands.
 - Perform web searches for up-to-date information.
 
 Author: Your Name
@@ -37,6 +37,14 @@ from langchain.embeddings import OpenAIEmbeddings
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import RetrievalQA
 from langchain.prompts import MessagesPlaceholder
+import logging
+
+# ============================
+# Logging Configuration
+# ============================
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ============================
 # Configuration and Setup
@@ -89,8 +97,7 @@ if not openai_api_key:
 
 if not stability_api_key:
     st.warning("Please enter your Stability AI API key to enable Image Generation.")
-    # Note: Decide whether to stop or allow other functionalities to work
-    # Here, we allow other functionalities to work, but image generation won't be available
+    # Note: Allow other functionalities to work, but image generation won't be available
 
 # Set OpenAI API key
 os.environ["OPENAI_API_KEY"] = openai_api_key
@@ -175,7 +182,7 @@ def generate_image(prompt: str) -> str:
     url = "https://api.stability.ai/v2beta/stable-image/generate/ultra"
     headers = {
         "authorization": f"Bearer {stability_api_key}",
-        "accept": "image/png"  # Options: "image/jpeg", "image/webp"
+        "accept": "application/json"  # Change to "application/json" to receive base64 encoded image
     }
     files = {
         "none": ''  # As per API documentation
@@ -196,24 +203,35 @@ def generate_image(prompt: str) -> str:
         )
         
         if response.status_code == 200:
-            image_bytes = response.content
-            encoded_image = base64.b64encode(image_bytes).decode()
-            data_url = f"data:image/png;base64,{encoded_image}"
-            return data_url
+            # Expecting base64 encoded image in JSON response
+            response_json = response.json()
+            # Assuming the response contains the image as base64
+            # The exact field depends on Stability AI's API
+            # Adjust accordingly based on actual response structure
+            # For example, assuming 'data' field contains the image
+            image_base64 = response_json.get('data', '')
+            if image_base64:
+                data_url = f"data:image/png;base64,{image_base64}"
+                logger.info("Image generated successfully.")
+                return data_url
+            else:
+                return "Error generating image: No image data found in response."
         else:
             # Attempt to parse error message
             try:
                 error_message = response.json().get('error', 'Unknown error occurred.')
             except:
                 error_message = "Unknown error occurred."
+            logger.error(f"Error generating image: {error_message}")
             return f"Error generating image: {error_message}"
     except Exception as e:
+        logger.exception("Exception occurred while generating image.")
         return f"Error generating image: {e}"
 
 image_generation_tool = Tool(
     name="image_generation",
     func=generate_image,
-    description="Generates an image based on the prompt using Stability AI's Stable Image Ultra."
+    description="Generates an image based on the prompt using Stability AI's Stable Image Ultra. Use the command /image followed by your prompt."
 )
 tools.append(image_generation_tool)
 
@@ -242,6 +260,7 @@ def answer_question_about_document(question: str) -> str:
         answer = qa_chain.run(question)
         return answer
     except Exception as e:
+        logger.exception("Exception occurred while answering question.")
         return f"Error answering question: {e}"
 
 document_qa_tool = Tool(
@@ -293,22 +312,44 @@ if prompt := st.chat_input("Type your message here..."):
     st.session_state.messages.append(HumanMessage(content=prompt))
     st.chat_message("user").write(prompt)
 
-    # Run the agent and get the response
-    with st.chat_message("assistant"):
-        st_cb = StreamlitCallbackHandler(st.container())
-        try:
-            response = agent.run(input=prompt, callbacks=[st_cb])
-        except Exception as e:
-            response = f"An error occurred: {e}"
-        st.session_state.messages.append(AIMessage(content=response))
-        # Check if the response is a data URL for an image
-        if response.startswith("data:image"):
-            # Extract the base64 part and decode it
-            try:
-                header, encoded = response.split(",", 1)
-                image_bytes = base64.b64decode(encoded)
-                st.image(image_bytes, caption="Generated Image")
-            except Exception as e:
-                st.error(f"Error displaying image: {e}")
+    # Check if the prompt is an image generation command
+    if prompt.strip().lower().startswith("/image"):
+        image_prompt = prompt.strip()[len("/image"):].strip()
+        if image_prompt:
+            with st.chat_message("assistant"):
+                st.spinner("Generating image...")
+                image_response = generate_image(image_prompt)
+                st.session_state.messages.append(AIMessage(content=image_response))
+                # Check if the response is a data URL for an image
+                if image_response.startswith("data:image"):
+                    try:
+                        header, encoded = image_response.split(",", 1)
+                        image_bytes = base64.b64decode(encoded)
+                        st.image(image_bytes, caption=image_prompt)
+                    except Exception as e:
+                        st.error(f"Error displaying image: {e}")
+                else:
+                    st.write(image_response)
         else:
-            st.write(response)
+            with st.chat_message("assistant"):
+                st.write("Please provide a prompt after the /image command. Example: `/image a white siamese cat`")
+    else:
+        # Run the agent and get the response
+        with st.chat_message("assistant"):
+            with st.spinner("Generating response..."):
+                st_cb = StreamlitCallbackHandler(st.container())
+                try:
+                    response = agent.run(input=prompt, callbacks=[st_cb])
+                except Exception as e:
+                    response = f"An error occurred: {e}"
+            st.session_state.messages.append(AIMessage(content=response))
+            # Check if the response is a data URL for an image
+            if response.startswith("data:image"):
+                try:
+                    header, encoded = response.split(",", 1)
+                    image_bytes = base64.b64decode(encoded)
+                    st.image(image_bytes, caption="Generated Image")
+                except Exception as e:
+                    st.error(f"Error displaying image: {e}")
+            else:
+                st.write(response)
