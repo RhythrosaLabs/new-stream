@@ -78,19 +78,19 @@ with conversation_container:
 # ------------------------
 st.markdown("---")
 with st.form("chat_form", clear_on_submit=True):
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        prompt = st.text_input("Type your message here...")
-    with col2:
-        submit_button = st.form_submit_button("Send")
+    prompt = st.text_input("Type your message here...")
+    submit_button = st.form_submit_button("Send")
 
     if submit_button and prompt:
         # Append user message to session state
         st.session_state["messages"].append({"role": "user", "content": prompt})
 
         # Determine intent
-        is_search = any(keyword in prompt.lower() for keyword in ["search for", "look up", "find", "google", "web search", "search the web"])
-        is_file_query = any(keyword in prompt.lower() for keyword in ["analyze", "summary", "summarize", "tell me about", "information from", "details of"])
+        search_keywords = ["search for", "look up", "find", "google", "web search", "search the web"]
+        file_keywords = ["analyze", "summary", "summarize", "tell me about", "information from", "details of"]
+
+        is_search = any(keyword in prompt.lower() for keyword in search_keywords)
+        is_file_query = any(keyword in prompt.lower() for keyword in file_keywords)
 
         response = ""
 
@@ -106,7 +106,7 @@ with st.form("chat_form", clear_on_submit=True):
                     prompt_text = f"""{anthropic.HUMAN_PROMPT} {st.session_state["uploaded_file_content"]}\n\n{prompt}{anthropic.AI_PROMPT}"""
                     response_obj = client.completions.create(
                         prompt=prompt_text,
-                        model="claude-2",  # Use "claude-1" or "claude-2" based on availability
+                        model="claude-2",  # Use "claude-1" if "claude-2" is unavailable
                         stop_sequences=[anthropic.HUMAN_PROMPT],
                         max_tokens_to_sample=150,
                     )
@@ -165,12 +165,4 @@ with st.form("chat_form", clear_on_submit=True):
         # Append assistant's response to session state
         st.session_state["messages"].append({"role": "assistant", "content": response})
 
-        # Refresh the conversation container
-        st.experimental_rerun()
-
-# ------------------------
-# Lock Input and Uploader at Bottom
-# ------------------------
-# To lock the input field and uploader at the bottom, we utilize Streamlit's layout capabilities.
-# The input form is already placed after the conversation, ensuring it's at the bottom.
-
+        # No need for st.experimental_rerun(); Streamlit will handle rerun automatically
