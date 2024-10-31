@@ -3,3 +3,6 @@ openai
 anthropic
 langchain
 duckduckgo-search
+langchain
+langchain-community
+langchain-openai
