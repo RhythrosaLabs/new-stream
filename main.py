@@ -95,29 +95,27 @@ if st.button("Send") and user_input:
             if uploaded_image:
                 base64_image = base64.b64encode(uploaded_image.read()).decode()
                 vision_prompt = "What is shown in this image?"
-                vision_response = openai.Chat.create(
+                vision_response = openai.Completion.create(
                     model="gpt-4-vision",
-                    messages=[{"role": "user", "content": vision_prompt}]
+                    prompt=vision_prompt,
+                    max_tokens=50
                 )
-                response_content = vision_response['choices'][0]['message']['content']
+                response_content = vision_response['choices'][0]['text']
             else:
                 response_content = "Please upload an image for vision analysis."
 
         elif action == "text_to_speech":
-            tts_response = openai.Audio.create(
-                input=user_input,
-                voice="female",
-                model="tts-1-hd"
-            )
-            audio_url = tts_response['data'][0]['audio_url']
-            response_content = f"[Generated Speech]({audio_url})"
+            # Update this with the correct text-to-speech method if available, placeholder for demonstration
+            response_content = "Text-to-Speech feature not available in the current OpenAI API."
 
         else:  # Default to OpenAI Chat
-            chat_response = openai.Chat.create(
+            chat_prompt = "\n".join([msg["content"] for msg in st.session_state["messages"]])
+            chat_response = openai.Completion.create(
                 model="gpt-4",
-                messages=st.session_state["messages"]
+                prompt=chat_prompt,
+                max_tokens=150
             )
-            response_content = chat_response['choices'][0]['message']['content']
+            response_content = chat_response['choices'][0]['text']
 
         # Append assistant's response to the session state
         st.session_state["messages"].append({"role": "assistant", "content": response_content})
