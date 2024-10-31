@@ -62,17 +62,20 @@ with tabs[0]:
             st.info("Please add your OpenAI API key in the sidebar to continue.")
             st.stop()
         
-        client = OpenAI(api_key=openai_api_key_chatbot)
-        st.session_state.chatbot_messages.append({"role": "user", "content": prompt})
-        st.chat_message("user").write(prompt)
-        
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo", 
-            messages=st.session_state.chatbot_messages
-        )
-        msg = response.choices[0].message.content
-        st.session_state.chatbot_messages.append({"role": "assistant", "content": msg})
-        st.chat_message("assistant").write(msg)
+        try:
+            client = OpenAI(api_key=openai_api_key_chatbot)
+            st.session_state.chatbot_messages.append({"role": "user", "content": prompt})
+            st.chat_message("user").write(prompt)
+            
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo", 
+                messages=st.session_state.chatbot_messages
+            )
+            msg = response.choices[0].message.content
+            st.session_state.chatbot_messages.append({"role": "assistant", "content": msg})
+            st.chat_message("assistant").write(msg)
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
 
 ## Anthropic File Q&A Tab
 with tabs[1]:
@@ -90,19 +93,26 @@ with tabs[1]:
         if not anthropic_api_key:
             st.info("Please add your Anthropic API key in the sidebar to continue.")
         else:
-            article = uploaded_file.read().decode()
-            prompt = f"""{anthropic.HUMAN_PROMPT} Here's an article:\n\n
-            {article}\n\n\n\n{question}{anthropic.AI_PROMPT}"""
-        
-            client = anthropic.Client(api_key=anthropic_api_key)
-            response = client.completions.create(
-                prompt=prompt,
-                stop_sequences=[anthropic.HUMAN_PROMPT],
-                model="claude-v1",  # Use "claude-2" for Claude 2 model if available
-                max_tokens_to_sample=100,
-            )
-            st.write("### Answer")
-            st.write(response.completion)
+            try:
+                article = uploaded_file.read().decode()
+                prompt = f"""{anthropic.HUMAN_PROMPT} Here's an article:\n\n
+                {article}\n\n\n\n{question}{anthropic.AI_PROMPT}"""
+            
+                client = anthropic.Client(api_key=anthropic_api_key)
+                response = client.completions.create(
+                    prompt=prompt,
+                    stop_sequences=[anthropic.HUMAN_PROMPT],
+                    model="claude-2",  # Updated model name
+                    max_tokens_to_sample=100,
+                )
+                st.write("### Answer")
+                st.write(response.completion)
+            except anthropic.NotFoundError as e:
+                st.error(f"Model not found: {e}")
+            except anthropic.AuthenticationError:
+                st.error("Authentication failed. Please check your API key.")
+            except Exception as e:
+                st.error(f"An unexpected error occurred: {e}")
 
 ## LangChain Chat with Search Tab
 with tabs[2]:
@@ -129,20 +139,23 @@ with tabs[2]:
             st.info("Please add your OpenAI API key in the sidebar to continue.")
             st.stop()
     
-        llm = ChatOpenAI(
-            model_name="gpt-3.5-turbo", 
-            openai_api_key=openai_api_key_search, 
-            streaming=True
-        )
-        search = DuckDuckGoSearchRun(name="Search")
-        search_agent = initialize_agent(
-            [search], 
-            llm, 
-            agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, 
-            handle_parsing_errors=True
-        )
-        with st.chat_message("assistant"):
-            st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
-            response = search_agent.run(st.session_state.search_messages, callbacks=[st_cb])
-            st.session_state.search_messages.append({"role": "assistant", "content": response})
-            st.chat_message("assistant").write(response)
+        try:
+            llm = ChatOpenAI(
+                model_name="gpt-3.5-turbo", 
+                openai_api_key=openai_api_key_search, 
+                streaming=True
+            )
+            search = DuckDuckGoSearchRun(name="Search")
+            search_agent = initialize_agent(
+                [search], 
+                llm, 
+                agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, 
+                handle_parsing_errors=True
+            )
+            with st.chat_message("assistant"):
+                st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
+                response = search_agent.run(st.session_state.search_messages, callbacks=[st_cb])
+                st.session_state.search_messages.append({"role": "assistant", "content": response})
+                st.chat_message("assistant").write(response)
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
