@@ -1,500 +1,77 @@
 import streamlit as st
-import os
-import requests
-import threading
-import time
-import base64
-from io import BytesIO
-from PIL import Image
-import json
-import streamlit_drawable_canvas as st_canvas
+from openai import OpenAI
+import anthropic
 from langchain.agents import initialize_agent, AgentType
 from langchain.chat_models import ChatOpenAI
 from langchain.tools import DuckDuckGoSearchRun
+import logging
 
-# Directory to save generated files
-GENERATED_FILES_DIR = "generated_files"
-if not os.path.exists(GENERATED_FILES_DIR):
-    os.makedirs(GENERATED_FILES_DIR)
-
-# Custom CSS for Chat Interface
-st.markdown("""
-    <style>
-        /* Container to hold chat messages and make it scrollable */
-        .chat-container {
-            height: 70vh;
-            overflow-y: auto;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            margin-bottom: 90px; /* Space for fixed input area */
-        }
-        /* Fixed input area at the bottom */
-        .fixed-input {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            max-width: 800px;
-            padding: 10px;
-            background-color: white;
-            border-top: 1px solid #ddd;
-            display: flex;
-            align-items: center;
-            z-index: 1000;
-        }
-        /* Adjust main content to avoid overlap with the fixed input */
-        .main-content {
-            padding-bottom: 90px;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-# Sidebar for API Key Configuration
+# API Setup Sidebar
 with st.sidebar:
-    st.header("🔑 API Configuration")
-    openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password")
-    stability_api_key = st.text_input("Stability AI API Key", key="stability_ai_api_key", type="password")
-    st.markdown("**Note:** Ensure your API keys are valid to access all features.")
+    openai_api_key = st.text_input("OpenAI API Key", type="password")
+    anthropic_api_key = st.text_input("Anthropic API Key", type="password")
+    st.markdown("[Get OpenAI Key](https://platform.openai.com/account/api-keys)")
+    st.markdown("[Code on GitHub](https://github.com/streamlit/llm-examples/blob/main/Chatbot.py)")
 
-# Titles for the application
-st.title("🌀 Unified AI Chat Interface")
-
-# Initialize session state for messages and file management
+# Initialize session state for messages and files
 if "messages" not in st.session_state:
-    st.session_state["messages"] = [{"role": "assistant", "content": "Hello! How can I assist you today?"}]
+    st.session_state["messages"] = [{"role": "assistant", "content": "Hello! How can I assist you?"}]
 if "files" not in st.session_state:
-    st.session_state["files"] = {}
-if "langchain_agent" not in st.session_state:
-    st.session_state["langchain_agent"] = None
+    st.session_state["files"] = []
 
-# Helper Functions
-def save_file(content, filename):
-    """Save binary content to a file."""
-    file_path = os.path.join(GENERATED_FILES_DIR, filename)
-    with open(file_path, "wb") as f:
-        f.write(content)
-    return file_path
+# Chat Interface and Message Display
+st.title("🧠 AI Multi-Tool Chat Interface")
 
-def display_image(image_bytes, caption=None):
-    """Display an image in Streamlit."""
-    image = Image.open(BytesIO(image_bytes))
-    st.image(image, caption=caption, use_column_width=True)
-
-def display_video(video_bytes, caption=None):
-    """Display a video in Streamlit."""
-    video_encoded = base64.b64encode(video_bytes).decode()
-    video_html = f"""
-    <video width="100%" controls>
-        <source src="data:video/mp4;base64,{video_encoded}" type="video/mp4">
-        Your browser does not support the video tag.
-    </video>
-    """
-    st.markdown(video_html, unsafe_allow_html=True)
-    if caption:
-        st.caption(caption)
-
-def display_3d_model(glb_bytes, caption=None):
-    """Display a 3D model using model-viewer."""
-    glb_base64 = base64.b64encode(glb_bytes).decode()
-    model_html = f"""
-    <model-viewer src="data:model/gltf-binary;base64,{glb_base64}"
-                  style="width: 100%; height: 600px;"
-                  autoplay
-                  camera-controls
-                  ar>
-    </model-viewer>
-    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
-    """
-    st.markdown(model_html, unsafe_allow_html=True)
-    if caption:
-        st.caption(caption)
-
-def initialize_langchain_agent():
-    """Initialize LangChain agent and store it in session state."""
-    if st.session_state["langchain_agent"] is None:
-        if not openai_api_key:
-            st.session_state["messages"].append({"role": "assistant", "content": "❌ OpenAI API Key is missing. Please provide it in the sidebar."})
-            return
-        llm = ChatOpenAI(model_name="gpt-4-turbo", openai_api_key=openai_api_key, temperature=0.7)
-        search = DuckDuckGoSearchRun()
-        agent = initialize_agent(
-            [search],
-            llm,
-            agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-            verbose=False
-        )
-        st.session_state["langchain_agent"] = agent
-
-# --- Tabs for Chat and File Management ---
-tab1, tab2 = st.tabs(["💬 Chat", "📁 File Management"])
-
-# --- Tab 1: Chat ---
-with tab1:
-    st.write("Interact with AI models for general chat, file analysis, web search, image generation, video creation, and 3D modeling.")
-
-    # Display chat messages in a scrollable container
-    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+def display_messages():
     for msg in st.session_state["messages"]:
-        if msg.get("image"):
-            display_image(msg["image"], caption=msg["content"])
-        elif msg.get("video"):
-            display_video(msg["video"], caption=msg["content"])
-        elif msg.get("model_3d"):
-            display_3d_model(msg["model_3d"], caption=msg["content"])
-        else:
-            if msg["role"] == "assistant":
-                st.markdown(f"**Assistant:** {msg['content']}")
-            elif msg["role"] == "user":
-                st.markdown(f"**You:** {msg['content']}")
-    st.markdown('</div>', unsafe_allow_html=True)
+        st.chat_message(msg["role"]).write(msg["content"])
 
-    # Fixed input area for file upload and text input at the bottom of the page
-    st.markdown('<div class="fixed-input">', unsafe_allow_html=True)
-    with st.form(key='chat_form', clear_on_submit=True):
-        uploaded_file = st.file_uploader("Attach file", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], label_visibility="collapsed")
-        prompt = st.text_input("Type your command here...", key="chat_input", label_visibility="collapsed")
-        submit = st.form_submit_button("Send")
-    st.markdown('</div>', unsafe_allow_html=True)
+display_messages()
 
-    # If a file is uploaded, add it to the file management system
-    if uploaded_file:
-        file_content = uploaded_file.read()
-        st.session_state["files"][uploaded_file.name] = file_content
-        st.session_state["messages"].append({"role": "assistant", "content": f"📁 File '{uploaded_file.name}' uploaded successfully."})
-        st.success(f"File '{uploaded_file.name}' uploaded successfully.")
+# Message Input Handling
+if prompt := st.chat_input():
+    if not openai_api_key:
+        st.info("Please provide an OpenAI API key to proceed.")
+        st.stop()
 
-    if submit and prompt:
-        st.session_state["messages"].append({"role": "user", "content": prompt})
-        # Scroll to the bottom of the chat
-        st.markdown("""
-            <script>
-            var elem = document.querySelector('.chat-container');
-            elem.scrollTop = elem.scrollHeight;
-            </script>
-        """, unsafe_allow_html=True)
+    st.session_state["messages"].append({"role": "user", "content": prompt})
+    st.chat_message("user").write(prompt)
 
-        # Ensure both API keys are provided
-        if not openai_api_key or not stability_api_key:
-            st.session_state["messages"].append({"role": "assistant", "content": "❌ Please enter both OpenAI and Stability AI API keys in the sidebar to continue."})
-        else:
-            # Initialize LangChain agent if not already done
-            initialize_langchain_agent()
+    # OpenAI Chat
+    client = OpenAI(api_key=openai_api_key)
+    response = client.Chat.create(model="gpt-3.5-turbo", messages=st.session_state["messages"])
+    msg_content = response.choices[0].message.content
+    st.session_state["messages"].append({"role": "assistant", "content": msg_content})
+    st.chat_message("assistant").write(msg_content)
 
-            # Analyze the prompt to determine the task
-            analysis_prompt = f"Analyze the following user request to determine if it is for general chat, web search, file analysis, image generation, video generation, or 3D model generation. Request: '{prompt}'"
+    # Additional functionalities like file rendering, if available
+    if "files" in st.session_state:
+        for file in st.session_state["files"]:
+            st.write(f"File: {file['name']} - {file['type']}")
+            # Custom file handling logic based on file type
 
-            analysis_payload = {
-                "model": "gpt-4-turbo",
-                "messages": [{"role": "system", "content": analysis_prompt}],
-                "max_tokens": 50,
-                "temperature": 0.5
-            }
+# Search with LangChain Integration
+def chat_with_search():
+    llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=openai_api_key)
+    search = DuckDuckGoSearchRun(name="Search")
+    search_agent = initialize_agent([search], llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION)
+    response = search_agent.run(st.session_state["messages"])
+    st.session_state["messages"].append({"role": "assistant", "content": response})
+    st.chat_message("assistant").write(response)
 
-            def analyze_and_handle():
-                try:
-                    analysis_response = requests.post(
-                        "https://api.openai.com/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {openai_api_key}",
-                            "Content-Type": "application/json"
-                        },
-                        json=analysis_payload
-                    )
+st.button("🔍 Search Web", on_click=chat_with_search)
 
-                    if analysis_response.status_code == 200:
-                        analysis_result = analysis_response.json()['choices'][0]['message']['content'].strip().lower()
-                        handle_task(analysis_result)
-                    else:
-                        st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error analyzing prompt: {analysis_response.status_code} - {analysis_response.text}"})
-                except Exception as e:
-                    st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error analyzing prompt: {e}"})
+# File Upload and Q&A with Anthropic Integration
+uploaded_file = st.file_uploader("Upload a file for Q&A")
+question = st.text_input("Ask a question about the uploaded file", placeholder="Summarize the file")
 
-            def handle_task(task_decision):
-                if "image generation" in task_decision:
-                    generate_image(prompt)
-                elif "file analysis" in task_decision:
-                    analyze_file(prompt)
-                elif "web search" in task_decision:
-                    perform_web_search(prompt)
-                elif "video generation" in task_decision:
-                    generate_video(prompt)
-                elif "3d model generation" in task_decision:
-                    generate_3d_model(prompt)
-                else:
-                    general_chat(prompt)
-
-            def generate_image(prompt_text):
-                def task():
-                    st.session_state["messages"].append({"role": "assistant", "content": "🖼️ Generating image..."})
-                    # Update the chat
-                    st.experimental_rerun()
-
-                    # Prepare data for Stability AI
-                    data = {
-                        "prompt": prompt_text,
-                        "model": "stable-diffusion-3.0-large",
-                        "steps": 50,
-                        "sampler": "DDIM",
-                        "cfg_scale": 7.0,
-                        "seed": 0,
-                        "output_format": "png",
-                        "mode": "text-to-image",
-                        "strength": 0.5
-                    }
-
-                    url = "https://api.stability.ai/v2beta/stable-image/generate"
-
-                    try:
-                        response = requests.post(url, headers={
-                            "Authorization": f"Bearer {stability_api_key}",
-                            "Accept": "application/json"
-                        }, json=data)
-
-                        if response.status_code == 200:
-                            data_response = response.json()
-                            if 'artifacts' in data_response and len(data_response['artifacts']) > 0:
-                                img_data = base64.b64decode(data_response['artifacts'][0]['base64'])
-                                filename = f"text_to_image_{int(time.time())}.{data['output_format']}"
-                                save_file(img_data, filename)
-                                st.session_state["messages"].append({"role": "assistant", "content": f"🖼️ Image generated for: '{prompt_text}'", "image": img_data})
-                            else:
-                                st.session_state["messages"].append({"role": "assistant", "content": "❌ No artifacts found in the response."})
-                        else:
-                            st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error: {response.status_code} - {response.text}"})
-                    except Exception as e:
-                        st.session_state["messages"].append({"role": "assistant", "content": f"❌ Image generation error: {e}"})
-
-                threading.Thread(target=task).start()
-
-            def analyze_file(prompt_text):
-                def task():
-                    if uploaded_file:
-                        st.session_state["messages"].append({"role": "assistant", "content": "📄 Analyzing the uploaded file..."})
-                        st.experimental_rerun()
-
-                        file_content = st.session_state["files"][uploaded_file.name]
-                        # Handle different file types
-                        if uploaded_file.type.startswith("text/"):
-                            file_text = file_content.decode()
-                        elif uploaded_file.type.startswith("image/"):
-                            # Convert image to base64 string
-                            file_text = base64.b64encode(file_content).decode()
-                        else:
-                            file_text = "Unsupported file type for analysis."
-
-                        analysis_payload_file = {
-                            "model": "gpt-4-turbo",
-                            "messages": [
-                                {"role": "system", "content": f"Analyze the content of the uploaded file '{uploaded_file.name}' and provide insights."},
-                                {"role": "user", "content": f"File content: {file_text}"}
-                            ],
-                            "max_tokens": 500,
-                            "temperature": 0.5
-                        }
-
-                        try:
-                            response = requests.post(
-                                "https://api.openai.com/v1/chat/completions",
-                                headers={
-                                    "Authorization": f"Bearer {openai_api_key}",
-                                    "Content-Type": "application/json"
-                                },
-                                json=analysis_payload_file
-                            )
-                            if response.status_code == 200:
-                                analysis_result = response.json()['choices'][0]['message']['content'].strip()
-                                st.session_state["messages"].append({"role": "assistant", "content": analysis_result})
-                            else:
-                                st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error: {response.status_code} - {response.text}"})
-                        except Exception as e:
-                            st.session_state["messages"].append({"role": "assistant", "content": f"❌ File analysis error: {e}"})
-
-                threading.Thread(target=task).start()
-
-            def perform_web_search(prompt_text):
-                def task():
-                    st.session_state["messages"].append({"role": "assistant", "content": "🔍 Performing web search..."})
-                    st.experimental_rerun()
-
-                    try:
-                        if st.session_state["langchain_agent"] is None:
-                            st.session_state["messages"].append({"role": "assistant", "content": "❌ LangChain agent not initialized."})
-                            return
-                        response = st.session_state["langchain_agent"].run(prompt_text)
-                        st.session_state["messages"].append({"role": "assistant", "content": response})
-                    except Exception as e:
-                        st.session_state["messages"].append({"role": "assistant", "content": f"❌ Web search error: {e}"})
-
-                threading.Thread(target=task).start()
-
-            def generate_video(prompt_text):
-                def task():
-                    st.session_state["messages"].append({"role": "assistant", "content": "🎞️ Generating video..."})
-                    st.experimental_rerun()
-
-                    # Placeholder parameters; in a real scenario, parse from prompt or use defaults
-                    data = {
-                        "cfg_scale": 1.8,
-                        "motion_bucket_id": 127,
-                        "seed": 0
-                    }
-
-                    url = "https://api.stability.ai/v2beta/image-to-video"
-
-                    if uploaded_file and uploaded_file.type.startswith("image/"):
-                        try:
-                            files = {
-                                "image": uploaded_file.read(),
-                            }
-
-                            response = requests.post(url, headers={
-                                "Authorization": f"Bearer {stability_api_key}",
-                            }, files=files, data=data)
-
-                            if response.status_code == 200:
-                                generation_id = response.json().get("id")
-                                st.session_state["messages"].append({"role": "assistant", "content": "⏳ Video generation started. Please wait..."})
-                                st.experimental_rerun()
-
-                                # Polling for video generation result
-                                result_url = f"https://api.stability.ai/v2beta/image-to-video/result/{generation_id}"
-                                accept_header = "video/*"
-                                max_retries = 30
-                                retry_delay = 10  # seconds
-
-                                for attempt in range(max_retries):
-                                    time.sleep(retry_delay)
-                                    result_response = requests.get(
-                                        result_url,
-                                        headers={
-                                            "Authorization": f"Bearer {stability_api_key}",
-                                            "Accept": accept_header,
-                                        },
-                                    )
-                                    if result_response.status_code == 200:
-                                        video_bytes = result_response.content
-                                        filename = f"generated_video_{int(time.time())}.mp4"
-                                        save_file(video_bytes, filename)
-                                        st.session_state["messages"].append({"role": "assistant", "content": "🎞️ Video generated successfully!", "video": video_bytes})
-                                        break
-                                    elif result_response.status_code == 202:
-                                        st.session_state["messages"].append({"role": "assistant", "content": f"⏳ Still processing... ({attempt + 1}/{max_retries})"})
-                                        st.experimental_rerun()
-                                        continue
-                                    else:
-                                        st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error: {result_response.status_code} - {result_response.text}"})
-                                        break
-                                else:
-                                    st.session_state["messages"].append({"role": "assistant", "content": "❌ Video generation timed out."})
-                            else:
-                                st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error: {response.status_code} - {response.text}"})
-                        except Exception as e:
-                            st.session_state["messages"].append({"role": "assistant", "content": f"❌ Video generation error: {e}"})
-                    else:
-                        st.session_state["messages"].append({"role": "assistant", "content": "❌ Please upload an image to generate a video."})
-
-                threading.Thread(target=task).start()
-
-            def generate_3d_model(prompt_text):
-                def task():
-                    st.session_state["messages"].append({"role": "assistant", "content": "🔷 Generating 3D model..."})
-                    st.experimental_rerun()
-
-                    # Placeholder parameters; in a real scenario, parse from prompt or use defaults
-                    data = {
-                        "texture_resolution": "1024",
-                        "foreground_ratio": 0.85,
-                        "remesh": "none",
-                        "vertex_count": -1
-                    }
-
-                    url = "https://api.stability.ai/v2beta/3d/stable-fast-3d"
-
-                    if uploaded_file and uploaded_file.type.startswith("image/"):
-                        try:
-                            files = {
-                                "image": uploaded_file.read(),
-                            }
-
-                            response = requests.post(url, headers={
-                                "Authorization": f"Bearer {stability_api_key}",
-                            }, files=files, data=data)
-
-                            if response.status_code == 200:
-                                glb_data = response.content
-                                filename = f"generated_model_{int(time.time())}.glb"
-                                save_file(glb_data, filename)
-                                glb_base64 = base64.b64encode(glb_data).decode()
-                                model_src = f"data:model/gltf-binary;base64,{glb_base64}"
-                                st.session_state["messages"].append({"role": "assistant", "content": "🔷 3D Model generated successfully!", "model_3d": model_src})
-                            else:
-                                st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error: {response.status_code} - {response.text}"})
-                        except Exception as e:
-                            st.session_state["messages"].append({"role": "assistant", "content": f"❌ 3D model generation error: {e}"})
-                    else:
-                        st.session_state["messages"].append({"role": "assistant", "content": "❌ Please upload an image to generate a 3D model."})
-
-                threading.Thread(target=task).start()
-
-            def general_chat(prompt_text):
-                def task():
-                    st.session_state["messages"].append({"role": "assistant", "content": "💬 Processing your request..."})
-                    st.experimental_rerun()
-
-                    chat_payload = {
-                        "model": "gpt-4-turbo",
-                        "messages": st.session_state["messages"],
-                        "max_tokens": 150,
-                        "temperature": 0.7
-                    }
-
-                    try:
-                        response = requests.post(
-                            "https://api.openai.com/v1/chat/completions",
-                            headers={
-                                "Authorization": f"Bearer {openai_api_key}",
-                                "Content-Type": "application/json"
-                            },
-                            json=chat_payload
-                        )
-                        if response.status_code == 200:
-                            chat_result = response.json()['choices'][0]['message']['content'].strip()
-                            st.session_state["messages"].append({"role": "assistant", "content": chat_result})
-                        else:
-                            st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error: {response.status_code} - {response.text}"})
-                    except Exception as e:
-                        st.session_state["messages"].append({"role": "assistant", "content": f"❌ Chat response error: {e}"})
-
-                threading.Thread(target=task).start()
-
-            # Start analysis in a new thread
-            threading.Thread(target=analyze_and_handle).start()
-
-# --- Tab 2: File Management ---
-with tab2:
-    st.header("📁 File Management")
-    st.subheader("Manage and View Generated Files")
-
-    files = os.listdir(GENERATED_FILES_DIR)
-    if files:
-        for file in files:
-            file_path = os.path.join(GENERATED_FILES_DIR, file)
-            st.markdown(f"### {file}")
-            if file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp')):
-                with open(file_path, "rb") as f:
-                    img_bytes = f.read()
-                    display_image(img_bytes, caption=file)
-            elif file.lower().endswith('.mp4'):
-                with open(file_path, "rb") as f:
-                    video_bytes = f.read()
-                    display_video(video_bytes, caption=file)
-            elif file.lower().endswith('.glb'):
-                with open(file_path, "rb") as f:
-                    glb_bytes = f.read()
-                    display_3d_model(glb_bytes, caption=file)
-            else:
-                st.download_button("Download File", data=open(file_path, "rb").read(), file_name=file)
-            st.markdown("---")
-    else:
-        st.info("No files generated yet.")
+if uploaded_file and question:
+    if not anthropic_api_key:
+        st.info("Please provide an Anthropic API key.")
+        st.stop()
+    article = uploaded_file.read().decode()
+    client = anthropic.Client(api_key=anthropic_api_key)
+    prompt = f"{anthropic.HUMAN_PROMPT} {question}\n\n{article}\n{anthropic.AI_PROMPT}"
+    response = client.completions.create(prompt=prompt, model="claude-v1", max_tokens_to_sample=100)
+    st.session_state["messages"].append({"role": "assistant", "content": response.completion})
+    st.chat_message("assistant").write(response.completion)
