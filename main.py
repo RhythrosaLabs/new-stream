@@ -3,7 +3,6 @@ import openai
 import anthropic
 import os
 import tempfile
-import base64
 from langchain.agents import initialize_agent, Tool, AgentType
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.chat_models import ChatOpenAI, ChatAnthropic
@@ -40,13 +39,6 @@ st.set_page_config(
 with st.sidebar:
     st.header("🔑 API Keys & Uploads")
     
-    # OpenAI API Key
-    openai_api_key = st.text_input(
-        "OpenAI API Key",
-        type="password",
-        help="Enter your OpenAI API key. [Get one here](https://platform.openai.com/account/api-keys)",
-    )
-    
     # Anthropic API Key
     anthropic_api_key = st.text_input(
         "Anthropic API Key",
@@ -54,9 +46,16 @@ with st.sidebar:
         help="Enter your Anthropic API key. [Get one here](https://www.anthropic.com/product/claude)",
     )
     
+    # OpenAI API Key
+    openai_api_key = st.text_input(
+        "OpenAI API Key",
+        type="password",
+        help="Enter your OpenAI API key. [Get one here](https://platform.openai.com/account/api-keys)",
+    )
+    
     st.markdown("---")
     
-    # File Upload
+    # File Upload for Document Q&A
     uploaded_file = st.file_uploader("📄 Upload a document for Q&A", type=["pdf", "txt", "md"])
     
     st.markdown("---")
@@ -66,19 +65,19 @@ with st.sidebar:
 # Validate API Keys
 # ============================
 
-if not openai_api_key:
-    st.warning("Please enter your OpenAI API key to use the app.")
-    st.stop()
-
 if not anthropic_api_key:
     st.warning("Please enter your Anthropic API key to enable Document Q&A.")
-    # Optionally, you can allow the app to continue without Anthropic features
-    # For this example, we'll proceed but disable document Q&A if the key is missing.
+    
+if not openai_api_key:
+    st.warning("Please enter your OpenAI API key to enable Image Generation.")
+    # Depending on your needs, you might want to allow the app to continue without certain features.
+    # For this example, we'll allow it to continue but disable features if keys are missing.
 
 # ============================
 # Set API Keys
 # ============================
 
+# Set OpenAI API key
 os.environ["OPENAI_API_KEY"] = openai_api_key
 openai.api_key = openai_api_key
 
@@ -255,8 +254,8 @@ for msg in st.session_state.messages:
 
 # Accept user input
 if prompt := st.chat_input("Type your message here..."):
-    if not openai_api_key:
-        st.info("Please add your OpenAI API key to continue.")
+    if not (openai_api_key and anthropic_api_key):
+        st.info("Please add both OpenAI and Anthropic API keys to continue.")
         st.stop()
 
     # Add user message to session state
