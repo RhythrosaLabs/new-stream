@@ -110,7 +110,7 @@ def display_3d_model(glb_bytes, caption=None):
         st.caption(caption)
 
 # Initialize LangChain Agent for Web Search
-@st.singleton
+@st.cache_resource
 def init_langchain_agent(openai_key):
     """Initialize LangChain agent with DuckDuckGo search."""
     llm = ChatOpenAI(model_name="gpt-4-turbo", openai_api_key=openai_key, temperature=0.7)
@@ -273,7 +273,7 @@ with tab1:
                         else:
                             file_text = "Unsupported file type for analysis."
 
-                        analysis_payload = {
+                        analysis_payload_file = {
                             "model": "gpt-4-turbo",
                             "messages": [
                                 {"role": "system", "content": f"Analyze the content of the uploaded file '{uploaded_file.name}' and provide insights."},
@@ -290,7 +290,7 @@ with tab1:
                                     "Authorization": f"Bearer {openai_api_key}",
                                     "Content-Type": "application/json"
                                 },
-                                json=analysis_payload
+                                json=analysis_payload_file
                             )
                             if response.status_code == 200:
                                 analysis_result = response.json()['choices'][0]['message']['content'].strip()
