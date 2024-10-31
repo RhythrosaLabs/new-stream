@@ -111,26 +111,35 @@ def main():
             # Handle different types of responses
             if response.startswith("data:image"):
                 # Image response
-                header, data = response.split(',', 1)
-                img_data = base64.b64decode(data)
-                st.image(img_data, caption="Generated Image")
+                try:
+                    header, data = response.split(',', 1)
+                    img_data = base64.b64decode(data)
+                    st.image(img_data, caption="Generated Image")
+                except Exception as e:
+                    st.write(f"Error displaying image: {e}")
             elif response.startswith("data:model"):
                 # 3D Model response
                 st.write("3D model generated. Currently, displaying 3D models is not supported in Streamlit.")
-                # Optionally, provide a download link
-                header, data = response.split(',', 1)
-                glb_data = base64.b64decode(data)
-                st.download_button(
-                    label="Download 3D Model",
-                    data=glb_data,
-                    file_name="model.glb",
-                    mime="model/gltf-binary"
-                )
+                # Provide a download link
+                try:
+                    header, data = response.split(',', 1)
+                    glb_data = base64.b64decode(data)
+                    st.download_button(
+                        label="Download 3D Model",
+                        data=glb_data,
+                        file_name="model.glb",
+                        mime="model/gltf-binary"
+                    )
+                except Exception as e:
+                    st.write(f"Error providing download link for 3D model: {e}")
             elif response.startswith("data:video"):
                 # Video response
-                header, data = response.split(',', 1)
-                video_data = base64.b64decode(data)
-                st.video(video_data)
+                try:
+                    header, data = response.split(',', 1)
+                    video_data = base64.b64decode(data)
+                    st.video(video_data)
+                except Exception as e:
+                    st.write(f"Error displaying video: {e}")
             else:
                 # Text response
                 st.write(response)
