@@ -13,3 +13,5 @@ python-docx
 faiss-cpu
 unstructured[md]
 requests
+pillow
+streamlit-drawable-canvas
