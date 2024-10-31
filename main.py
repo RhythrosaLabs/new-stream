@@ -1,12 +1,13 @@
 import streamlit as st
 import openai
+import anthropic
 import os
 import tempfile
 import requests
 import base64
 from langchain.agents import initialize_agent, Tool, AgentType
 from langchain.callbacks import StreamlitCallbackHandler
-from langchain.chat_models import ChatOpenAI
+from langchain.chat_models import ChatOpenAI, ChatAnthropic
 from langchain.tools import DuckDuckGoSearchRun
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain.document_loaders import UnstructuredFileLoader, PyPDFLoader
@@ -47,6 +48,13 @@ with st.sidebar:
         help="Enter your OpenAI API key. [Get one here](https://platform.openai.com/account/api-keys)",
     )
     
+    # Anthropic API Key
+    anthropic_api_key = st.text_input(
+        "Anthropic API Key",
+        type="password",
+        help="Enter your Anthropic API key. [Get one here](https://www.anthropic.com/product/claude)",
+    )
+    
     st.markdown("---")
     
     # File Upload
@@ -60,12 +68,15 @@ if not openai_api_key:
     st.warning("Please enter your OpenAI API key to use the app.")
     st.stop()
 
-# Set OpenAI API key
+if not anthropic_api_key:
+    st.warning("Please enter your Anthropic API key to enable Document Q&A.")
+    # Depending on your needs, you might want to allow the app to continue without Anthropic.
+
+# Set OpenAI and Anthropic API keys
 os.environ["OPENAI_API_KEY"] = openai_api_key
 openai.api_key = openai_api_key
 
-# Initialize OpenAI client
-client = openai
+anthropic_client = anthropic.Client(anthropic_api_key) if anthropic_api_key else None
 
 # Initialize session state for messages and document processing
 if "messages" not in st.session_state:
@@ -158,10 +169,10 @@ image_generation_tool = Tool(
 )
 tools.append(image_generation_tool)
 
-# Document Q&A Tool using OpenAI's GPT-4
+# Document Q&A Tool using Anthropic's Claude
 def answer_question_about_document(question: str) -> str:
     """
-    Answers a question based on the uploaded document using OpenAI's GPT-4.
+    Answers a question based on the uploaded document using Anthropic's Claude.
 
     Args:
         question (str): The user's question.
@@ -171,11 +182,14 @@ def answer_question_about_document(question: str) -> str:
     """
     if st.session_state.vectorstore is None:
         return "No document has been uploaded. Please upload a document to use this feature."
-    
+
+    if not anthropic_client:
+        return "Anthropic API key not provided. Please enter it in the sidebar to use Document Q&A."
+
     try:
         retriever = st.session_state.vectorstore.as_retriever()
         qa_chain = RetrievalQA.from_chain_type(
-            llm=ChatOpenAI(model_name="gpt-4", openai_api_key=openai_api_key),
+            llm=ChatAnthropic(model="claude-v1", anthropic_api_key=anthropic_api_key),
             chain_type="stuff",
             retriever=retriever,
             return_source_documents=False
