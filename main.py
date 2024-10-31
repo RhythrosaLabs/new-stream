@@ -8,28 +8,34 @@ from PIL import Image
 import io
 import base64
 
-# Custom CSS to fix the input area at the bottom of the page
+# Custom CSS to keep input area fixed at the bottom of the chat tab
 st.markdown("""
     <style>
-        /* Set up a fixed height for the chat container */
+        /* Chat container with scrollable messages */
         .chat-container {
             height: 70vh;
             overflow-y: auto;
-            padding-bottom: 100px; /* space for the fixed input area */
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
         }
-        /* Fix the input area at the bottom of the page */
+        /* Fixed input area at the bottom */
         .fixed-input {
             position: fixed;
             bottom: 0;
-            left: 0;
             width: 100%;
-            background-color: white;
+            max-width: 800px;
             padding: 10px;
+            background-color: white;
+            border-top: 1px solid #ddd;
             box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
             display: flex;
-            justify-content: center;
+            justify-content: space-between;
             align-items: center;
             z-index: 1000;
+        }
+        .stTabs [data-testid="stVerticalBlock"] {
+            padding-bottom: 60px; /* Extra space for fixed input area */
         }
         .chat-input {
             flex: 1;
@@ -57,7 +63,7 @@ tab1, tab2 = st.tabs(["Chat", "File Management"])
 with tab1:
     st.write("Interact with AI models for general chat, file analysis, web search, and image generation.")
 
-    # Chat message container
+    # Display chat messages in a scrollable container
     st.markdown('<div class="chat-container">', unsafe_allow_html=True)
     for msg in st.session_state["messages"]:
         if msg.get("image"):
