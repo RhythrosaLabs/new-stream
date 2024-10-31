@@ -8,6 +8,10 @@ from io import BytesIO
 from PIL import Image
 import json
 import streamlit_drawable_canvas as st_canvas
+from langchain.agents import initialize_agent, AgentType
+from langchain.chat_models import ChatOpenAI
+from langchain.tools import DuckDuckGoSearchRun
+from langchain.callbacks import StreamlitCallbackHandler
 
 # Directory to save generated files
 GENERATED_FILES_DIR = "generated_files"
@@ -63,24 +67,21 @@ if "messages" not in st.session_state:
 if "files" not in st.session_state:
     st.session_state["files"] = {}
 
-# Tabs for Chat and File Management
-tab1, tab2 = st.tabs(["💬 Chat", "📁 File Management"])
-
-# --- Helper Functions ---
-# Function to save generated files
+# Helper Functions
 def save_file(content, filename):
+    """Save binary content to a file."""
     file_path = os.path.join(GENERATED_FILES_DIR, filename)
     with open(file_path, "wb") as f:
         f.write(content)
     return file_path
 
-# Function to display images
 def display_image(image_bytes, caption=None):
+    """Display an image in Streamlit."""
     image = Image.open(BytesIO(image_bytes))
     st.image(image, caption=caption, use_column_width=True)
 
-# Function to display videos
 def display_video(video_bytes, caption=None):
+    """Display a video in Streamlit."""
     video_encoded = base64.b64encode(video_bytes).decode()
     video_html = f"""
     <video width="100%" controls>
@@ -92,8 +93,8 @@ def display_video(video_bytes, caption=None):
     if caption:
         st.caption(caption)
 
-# Function to display 3D models using model-viewer
 def display_3d_model(glb_bytes, caption=None):
+    """Display a 3D model using model-viewer."""
     glb_base64 = base64.b64encode(glb_bytes).decode()
     model_html = f"""
     <model-viewer src="data:model/gltf-binary;base64,{glb_base64}"
@@ -107,6 +108,24 @@ def display_3d_model(glb_bytes, caption=None):
     st.markdown(model_html, unsafe_allow_html=True)
     if caption:
         st.caption(caption)
+
+# Initialize LangChain Agent for Web Search
+@st.experimental_singleton
+def init_langchain_agent(openai_key):
+    """Initialize LangChain agent with DuckDuckGo search."""
+    llm = ChatOpenAI(model_name="gpt-4-turbo", openai_api_key=openai_key, temperature=0.7)
+    search = DuckDuckGoSearchRun()
+    agent = initialize_agent(
+        [search],
+        llm,
+        agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+        verbose=True,
+        handle_parsing_errors=True
+    )
+    return agent
+
+# --- Tabs for Chat and File Management ---
+tab1, tab2 = st.tabs(["💬 Chat", "📁 File Management"])
 
 # --- Tab 1: Chat ---
 with tab1:
@@ -148,15 +167,8 @@ with tab1:
         if not openai_api_key or not stability_api_key:
             st.error("Please enter both OpenAI and Stability AI API keys in the sidebar to continue.")
         else:
-            # Initialize headers
-            headers_openai = {
-                "Authorization": f"Bearer {openai_api_key}",
-                "Content-Type": "application/json"
-            }
-            headers_stability = {
-                "Authorization": f"Bearer {stability_api_key}",
-                "Content-Type": "application/json"
-            }
+            # Initialize LangChain agent for web search
+            agent = init_langchain_agent(openai_api_key)
 
             # Analyze the prompt to determine the task
             analysis_prompt = f"Analyze the following user request to determine if it is for general chat, web search, file analysis, image generation, video generation, or 3D model generation. Request: '{prompt}'"
@@ -168,13 +180,20 @@ with tab1:
                 "temperature": 0.5
             }
 
-            def analyze_prompt():
+            def analyze_and_handle():
                 try:
+                    st.session_state["messages"].append({"role": "assistant", "content": "🔍 Analyzing your request..."})
+                    st.experimental_rerun()
+
                     analysis_response = requests.post(
                         "https://api.openai.com/v1/chat/completions",
-                        headers=headers_openai,
+                        headers={
+                            "Authorization": f"Bearer {openai_api_key}",
+                            "Content-Type": "application/json"
+                        },
                         json=analysis_payload
                     )
+
                     if analysis_response.status_code == 200:
                         analysis_result = analysis_response.json()['choices'][0]['message']['content'].strip().lower()
                         handle_task(analysis_result)
@@ -218,7 +237,10 @@ with tab1:
                     url = "https://api.stability.ai/v2beta/stable-image/generate"
 
                     try:
-                        response = requests.post(url, headers=headers_stability, json=data)
+                        response = requests.post(url, headers={
+                            "Authorization": f"Bearer {stability_api_key}",
+                            "Accept": "application/json"
+                        }, json=data)
                         if response.status_code == 200:
                             data_response = response.json()
                             if 'artifacts' in data_response and len(data_response['artifacts']) > 0:
@@ -242,7 +264,7 @@ with tab1:
                         st.experimental_rerun()
 
                         file_content = st.session_state["files"][uploaded_file.name]
-                        # Assuming the file is text-based for simplicity
+                        # Handle different file types
                         if uploaded_file.type.startswith("text/"):
                             file_text = file_content.decode()
                         elif uploaded_file.type.startswith("image/"):
@@ -264,7 +286,10 @@ with tab1:
                         try:
                             response = requests.post(
                                 "https://api.openai.com/v1/chat/completions",
-                                headers=headers_openai,
+                                headers={
+                                    "Authorization": f"Bearer {openai_api_key}",
+                                    "Content-Type": "application/json"
+                                },
                                 json=analysis_payload
                             )
                             if response.status_code == 200:
@@ -274,8 +299,6 @@ with tab1:
                                 st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error: {response.status_code} - {response.text}"})
                         except Exception as e:
                             st.session_state["messages"].append({"role": "assistant", "content": f"❌ File analysis error: {e}"})
-                    else:
-                        st.session_state["messages"].append({"role": "assistant", "content": "❌ Please upload a file for analysis."})
 
                 threading.Thread(target=task).start()
 
@@ -284,10 +307,11 @@ with tab1:
                     st.session_state["messages"].append({"role": "assistant", "content": "🔍 Performing web search..."})
                     st.experimental_rerun()
 
-                    # Placeholder for actual web search implementation
-                    # You can integrate LangChain's DuckDuckGoSearchRun or any other search API here
-                    search_result = f"🌐 Search results for '{prompt_text}' are not implemented yet."
-                    st.session_state["messages"].append({"role": "assistant", "content": search_result})
+                    try:
+                        response = agent.run(prompt_text)
+                        st.session_state["messages"].append({"role": "assistant", "content": response})
+                    except Exception as e:
+                        st.session_state["messages"].append({"role": "assistant", "content": f"❌ Web search error: {e}"})
 
                 threading.Thread(target=task).start()
 
@@ -311,7 +335,9 @@ with tab1:
                                 "image": uploaded_file.read(),
                             }
 
-                            response = requests.post(url, headers=headers_stability, files=files, data=data)
+                            response = requests.post(url, headers={
+                                "Authorization": f"Bearer {stability_api_key}",
+                            }, files=files, data=data)
                             if response.status_code == 200:
                                 generation_id = response.json().get("id")
                                 st.session_state["messages"].append({"role": "assistant", "content": "⏳ Video generation started. Please wait..."})
@@ -377,7 +403,9 @@ with tab1:
                                 "image": uploaded_file.read(),
                             }
 
-                            response = requests.post(url, headers=headers_stability, files=files, data=data)
+                            response = requests.post(url, headers={
+                                "Authorization": f"Bearer {stability_api_key}",
+                            }, files=files, data=data)
                             if response.status_code == 200:
                                 glb_data = response.content
                                 filename = f"generated_model_{int(time.time())}.glb"
@@ -409,7 +437,10 @@ with tab1:
                     try:
                         response = requests.post(
                             "https://api.openai.com/v1/chat/completions",
-                            headers=headers_openai,
+                            headers={
+                                "Authorization": f"Bearer {openai_api_key}",
+                                "Content-Type": "application/json"
+                            },
                             json=chat_payload
                         )
                         if response.status_code == 200:
@@ -423,7 +454,7 @@ with tab1:
                 threading.Thread(target=task).start()
 
             # Start analysis in a new thread
-            threading.Thread(target=analyze_prompt).start()
+            threading.Thread(target=analyze_and_handle).start()
 
 # --- Tab 2: File Management ---
 with tab2:
