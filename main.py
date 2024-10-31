@@ -11,7 +11,6 @@ import streamlit_drawable_canvas as st_canvas
 from langchain.agents import initialize_agent, AgentType
 from langchain.chat_models import ChatOpenAI
 from langchain.tools import DuckDuckGoSearchRun
-from langchain.callbacks import StreamlitCallbackHandler
 
 # Directory to save generated files
 GENERATED_FILES_DIR = "generated_files"
@@ -66,6 +65,8 @@ if "messages" not in st.session_state:
     st.session_state["messages"] = [{"role": "assistant", "content": "Hello! How can I assist you today?"}]
 if "files" not in st.session_state:
     st.session_state["files"] = {}
+if "langchain_agent" not in st.session_state:
+    st.session_state["langchain_agent"] = None
 
 # Helper Functions
 def save_file(content, filename):
@@ -109,20 +110,21 @@ def display_3d_model(glb_bytes, caption=None):
     if caption:
         st.caption(caption)
 
-# Initialize LangChain Agent for Web Search
-@st.cache_resource
-def init_langchain_agent(openai_key):
-    """Initialize LangChain agent with DuckDuckGo search."""
-    llm = ChatOpenAI(model_name="gpt-4-turbo", openai_api_key=openai_key, temperature=0.7)
-    search = DuckDuckGoSearchRun()
-    agent = initialize_agent(
-        [search],
-        llm,
-        agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-        verbose=True,
-        handle_parsing_errors=True
-    )
-    return agent
+def initialize_langchain_agent():
+    """Initialize LangChain agent and store it in session state."""
+    if st.session_state["langchain_agent"] is None:
+        if not openai_api_key:
+            st.session_state["messages"].append({"role": "assistant", "content": "❌ OpenAI API Key is missing. Please provide it in the sidebar."})
+            return
+        llm = ChatOpenAI(model_name="gpt-4-turbo", openai_api_key=openai_api_key, temperature=0.7)
+        search = DuckDuckGoSearchRun()
+        agent = initialize_agent(
+            [search],
+            llm,
+            agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+            verbose=False
+        )
+        st.session_state["langchain_agent"] = agent
 
 # --- Tabs for Chat and File Management ---
 tab1, tab2 = st.tabs(["💬 Chat", "📁 File Management"])
@@ -141,7 +143,10 @@ with tab1:
         elif msg.get("model_3d"):
             display_3d_model(msg["model_3d"], caption=msg["content"])
         else:
-            st.chat_message(msg["role"]).write(msg["content"])
+            if msg["role"] == "assistant":
+                st.markdown(f"**Assistant:** {msg['content']}")
+            elif msg["role"] == "user":
+                st.markdown(f"**You:** {msg['content']}")
     st.markdown('</div>', unsafe_allow_html=True)
 
     # Fixed input area for file upload and text input at the bottom of the page
@@ -161,14 +166,20 @@ with tab1:
 
     if submit and prompt:
         st.session_state["messages"].append({"role": "user", "content": prompt})
-        st.chat_message("user").write(prompt)
+        # Scroll to the bottom of the chat
+        st.markdown("""
+            <script>
+            var elem = document.querySelector('.chat-container');
+            elem.scrollTop = elem.scrollHeight;
+            </script>
+        """, unsafe_allow_html=True)
 
         # Ensure both API keys are provided
         if not openai_api_key or not stability_api_key:
-            st.error("Please enter both OpenAI and Stability AI API keys in the sidebar to continue.")
+            st.session_state["messages"].append({"role": "assistant", "content": "❌ Please enter both OpenAI and Stability AI API keys in the sidebar to continue."})
         else:
-            # Initialize LangChain agent for web search
-            agent = init_langchain_agent(openai_api_key)
+            # Initialize LangChain agent if not already done
+            initialize_langchain_agent()
 
             # Analyze the prompt to determine the task
             analysis_prompt = f"Analyze the following user request to determine if it is for general chat, web search, file analysis, image generation, video generation, or 3D model generation. Request: '{prompt}'"
@@ -182,9 +193,6 @@ with tab1:
 
             def analyze_and_handle():
                 try:
-                    st.session_state["messages"].append({"role": "assistant", "content": "🔍 Analyzing your request..."})
-                    st.experimental_rerun()
-
                     analysis_response = requests.post(
                         "https://api.openai.com/v1/chat/completions",
                         headers={
@@ -219,6 +227,7 @@ with tab1:
             def generate_image(prompt_text):
                 def task():
                     st.session_state["messages"].append({"role": "assistant", "content": "🖼️ Generating image..."})
+                    # Update the chat
                     st.experimental_rerun()
 
                     # Prepare data for Stability AI
@@ -241,6 +250,7 @@ with tab1:
                             "Authorization": f"Bearer {stability_api_key}",
                             "Accept": "application/json"
                         }, json=data)
+
                         if response.status_code == 200:
                             data_response = response.json()
                             if 'artifacts' in data_response and len(data_response['artifacts']) > 0:
@@ -308,7 +318,10 @@ with tab1:
                     st.experimental_rerun()
 
                     try:
-                        response = agent.run(prompt_text)
+                        if st.session_state["langchain_agent"] is None:
+                            st.session_state["messages"].append({"role": "assistant", "content": "❌ LangChain agent not initialized."})
+                            return
+                        response = st.session_state["langchain_agent"].run(prompt_text)
                         st.session_state["messages"].append({"role": "assistant", "content": response})
                     except Exception as e:
                         st.session_state["messages"].append({"role": "assistant", "content": f"❌ Web search error: {e}"})
@@ -338,6 +351,7 @@ with tab1:
                             response = requests.post(url, headers={
                                 "Authorization": f"Bearer {stability_api_key}",
                             }, files=files, data=data)
+
                             if response.status_code == 200:
                                 generation_id = response.json().get("id")
                                 st.session_state["messages"].append({"role": "assistant", "content": "⏳ Video generation started. Please wait..."})
@@ -406,6 +420,7 @@ with tab1:
                             response = requests.post(url, headers={
                                 "Authorization": f"Bearer {stability_api_key}",
                             }, files=files, data=data)
+
                             if response.status_code == 200:
                                 glb_data = response.content
                                 filename = f"generated_model_{int(time.time())}.glb"
