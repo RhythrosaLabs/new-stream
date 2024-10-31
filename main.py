@@ -8,30 +8,29 @@ from PIL import Image
 import io
 import base64
 
-# Custom CSS for styling the file upload button as a paperclip icon next to the text input
+# Custom CSS to fix the input area at the bottom of the page
 st.markdown("""
     <style>
-        .stTextInput, .stButton { width: 100%; margin: 0 auto; }
-        .upload-icon {
-            display: inline-block;
-            font-size: 1.2em;
-            margin-right: 10px;
-            cursor: pointer;
-        }
-        .chat-input-wrapper {
+        /* Fix the input area at the bottom */
+        .fixed-input {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: white;
+            padding: 10px;
+            box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
             display: flex;
-            align-items: center;
             justify-content: center;
+            align-items: center;
+            z-index: 1000;
         }
-        #fileUploader {
-            display: none;
+        .chat-input {
+            flex: 1;
+            margin-right: 10px;
         }
-        .paperclip {
-            font-family: Arial, sans-serif;
-            font-size: 1.5em;
-            font-weight: bold;
-            color: #4CAF50;
-            cursor: pointer;
+        .stTabs [data-testid="stHorizontalBlock"] {
+            padding-bottom: 60px; /* Extra space for fixed input */
         }
     </style>
 """, unsafe_allow_html=True)
@@ -62,13 +61,11 @@ with tab1:
         else:
             st.chat_message(msg["role"]).write(msg["content"])
 
-    # Paperclip icon for file upload, positioned next to the chat input
-    st.markdown('<div class="chat-input-wrapper">', unsafe_allow_html=True)
-    st.markdown('<label for="fileUploader" class="paperclip">📎</label>', unsafe_allow_html=True)
-    uploaded_file = st.file_uploader("Upload a file (text, image, or document)", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], key="fileUploader")
-
-    # Text input for user prompt
-    prompt = st.chat_input("Type your command here...")
+    # Fixed input area
+    st.markdown('<div class="fixed-input">', unsafe_allow_html=True)
+    uploaded_file = st.file_uploader("Attach file", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], label_visibility="collapsed")
+    prompt = st.text_input("Type your command here...", key="chat_input", label_visibility="collapsed")
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # If a file is uploaded, add it to the file management system
     if uploaded_file:
@@ -160,8 +157,6 @@ with tab1:
                 st.chat_message("assistant").write(chat_result)
             except Exception as e:
                 st.error(f"Chat response error: {e}")
-
-    st.markdown('</div>', unsafe_allow_html=True)
 
 with tab2:
     st.subheader("File Management")
