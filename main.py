@@ -26,11 +26,14 @@ with tab1:
         ]
 
     for msg in st.session_state.messages:
-        st.chat_message(msg["role"]).write(msg["content"])
+        if msg["role"] == "assistant":
+            st.write(f"🤖: {msg['content']}")
+        else:
+            st.write(f"🧑: {msg['content']}")
 
-    if prompt := st.chat_input():
+    if prompt := st.text_input("Enter your message here:"):
         st.session_state.messages.append({"role": "user", "content": prompt})
-        st.chat_message("user").write(prompt)
+        st.write(f"🧑: {prompt}")
 
         if not (openai_api_key or anthropic_api_key):
             st.info("Please add your API keys to continue.")
@@ -52,24 +55,22 @@ with tab1:
                 )
                 msg = response.completion
                 st.session_state.messages.append({"role": "assistant", "content": msg})
-                st.chat_message("assistant").write(msg)
+                st.write(f"🤖: {msg}")
         elif "search" in prompt.lower() and openai_api_key:
             # Web search using LangChain and DuckDuckGo
             llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=openai_api_key, streaming=True)
             search = DuckDuckGoSearchRun(name="Search")
             search_agent = initialize_agent([search], llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, handle_parsing_errors=True)
-            with st.chat_message("assistant"):
-                st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
-                response = search_agent.run(st.session_state.messages, callbacks=[st_cb])
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                st.write(response)
+            response = search_agent.run(st.session_state.messages)
+            st.session_state.messages.append({"role": "assistant", "content": response})
+            st.write(f"🤖: {response}")
         elif openai_api_key:
             # General chat using OpenAI
             client = OpenAI(api_key=openai_api_key)
             response = client.chat.completions.create(model="gpt-3.5-turbo", messages=st.session_state.messages)
             msg = response.choices[0].message.content
             st.session_state.messages.append({"role": "assistant", "content": msg})
-            st.chat_message("assistant").write(msg)
+            st.write(f"🤖: {msg}")
 
 with tab2:
     # Files tab: Uploaded and created files
