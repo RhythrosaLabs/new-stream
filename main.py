@@ -39,8 +39,9 @@ client = OpenAI(api_key=openai_api_key)
 
 # Initialize session state
 if "messages" not in st.session_state:
+    initial_message = "You are an assistant that can chat, generate images, and search the web."
     st.session_state.messages = [
-        SystemMessage(content="You are an assistant that can chat, generate images, analyze documents, and search the web.")
+        SystemMessage(content=initial_message)
     ]
 if "document_content" not in st.session_state:
     st.session_state.document_content = ""
@@ -69,6 +70,8 @@ if uploaded_file:
         vectorstore = FAISS.from_documents(docs, embeddings)
         st.session_state.vectorstore = vectorstore
         st.session_state.document_content = "Document uploaded and processed successfully."
+        # Update initial message to inform the assistant
+        st.session_state.messages[0].content += " A document has been uploaded, and you can answer questions about it."
     except Exception as e:
         st.error(f"Error processing document: {e}")
         st.stop()
@@ -125,7 +128,11 @@ def answer_question_about_document(question):
 document_qa_tool = Tool(
     name="document_qa",
     func=answer_question_about_document,
-    description="Useful for answering questions about the uploaded document."
+    description=(
+        "Use this tool to answer any questions related to the content of the uploaded document. "
+        "If the user asks about the document, its content, or any topics covered in the document, "
+        "you should use this tool to provide an accurate answer."
+    )
 )
 tools.append(document_qa_tool)
 
@@ -144,10 +151,13 @@ agent = initialize_agent(
     agent_kwargs=agent_kwargs,
 )
 
+# Add initial message to memory
+memory.chat_memory.add_message(st.session_state.messages[0])
+
 # Display chat messages from history on app rerun
 st.title("🤖 All-in-One Chat Assistant")
 
-for msg in st.session_state.messages:
+for msg in st.session_state.messages[1:]:
     if isinstance(msg, HumanMessage):
         st.chat_message("user").write(msg.content)
     elif isinstance(msg, AIMessage):
@@ -155,8 +165,10 @@ for msg in st.session_state.messages:
 
 # Accept user input
 if prompt := st.chat_input("Type your message here..."):
-    # Add user message to session state
-    st.session_state.messages.append(HumanMessage(content=prompt))
+    # Add user message to session state and memory
+    user_message = HumanMessage(content=prompt)
+    st.session_state.messages.append(user_message)
+    memory.chat_memory.add_message(user_message)
     st.chat_message("user").write(prompt)
 
     # Run the agent and get the response
@@ -166,7 +178,9 @@ if prompt := st.chat_input("Type your message here..."):
             response = agent.run(input=prompt, callbacks=[st_cb])
         except Exception as e:
             response = f"An error occurred: {e}"
-        st.session_state.messages.append(AIMessage(content=response))
+        ai_message = AIMessage(content=response)
+        st.session_state.messages.append(ai_message)
+        memory.chat_memory.add_message(ai_message)
         # Check if the response is an image URL
         if response.startswith("http"):
             st.image(response, caption=prompt)
