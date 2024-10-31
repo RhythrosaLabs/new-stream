@@ -1,10 +1,8 @@
 import streamlit as st
 from openai import OpenAI
 import anthropic
-import requests
 from datetime import datetime
 import json
-import time
 
 # Page config and title
 st.set_page_config(page_title="AI Assistant Hub", layout="wide")
@@ -12,20 +10,9 @@ st.set_page_config(page_title="AI Assistant Hub", layout="wide")
 # Custom CSS for better UI
 st.markdown("""
 <style>
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 24px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        white-space: pre-wrap;
-        background-color: #f0f2f6;
-        border-radius: 5px;
-        gap: 12px;
-        padding: 10px 16px;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #e0e2e6;
-    }
+    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
+    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #f0f2f6; border-radius: 5px; gap: 12px; padding: 10px 16px; }
+    .stTabs [aria-selected="true"] { background-color: #e0e2e6; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -43,7 +30,10 @@ with st.sidebar:
     st.header("⚙️ Settings")
     openai_model = st.selectbox(
         "OpenAI Model",
-        ["gpt-3.5-turbo", "gpt-4-turbo-preview"]
+        [
+            "gpt-3.5-turbo", "gpt-4-turbo", "gpt-4o", "gpt-4o-mini",
+            "gpt-4o-realtime-preview", "gpt-4o-audio-preview"
+        ]
     )
     anthropic_model = st.selectbox(
         "Anthropic Model",
