@@ -8,3 +8,5 @@ langchain-community
 langchain-openai
 replicate
 stability-sdk
+PyPDF2
+python-docx
