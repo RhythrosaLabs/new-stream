@@ -88,6 +88,11 @@ if "conversation_history" not in st.session_state:
 if "current_file" not in st.session_state:
     st.session_state.current_file = None
 
+# Function to check temperature support
+def model_supports_temperature(model_name):
+    unsupported_models = {"o1-preview", "o1-mini"}
+    return model_name not in unsupported_models
+
 # Create tabs
 tab1, tab2, tab3 = st.tabs(["💬 Chat & Document Analysis", "🔄 AI Model Comparison", "📊 Chat History"])
 
@@ -131,11 +136,20 @@ with tab1:
             
             if chat_model == "OpenAI GPT":
                 client = OpenAI(api_key=openai_api_key)
-                response = client.chat.completions.create(
-                    model=openai_model,
-                    messages=st.session_state.messages,
-                    temperature=temperature
-                )
+                
+                # Determine whether to pass temperature based on model
+                if model_supports_temperature(openai_model):
+                    response = client.chat.completions.create(
+                        model=openai_model,
+                        messages=st.session_state.messages,
+                        temperature=temperature
+                    )
+                else:
+                    response = client.chat.completions.create(
+                        model=openai_model,
+                        messages=st.session_state.messages
+                    )
+                
                 msg = response.choices[0].message.content
             else:
                 client = anthropic.Client(api_key=anthropic_api_key)
@@ -160,7 +174,6 @@ with tab1:
         
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
-
 # Tab 2: AI Model Comparison
 with tab2:
     st.header("AI Model Comparison")
