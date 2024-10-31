@@ -3,6 +3,8 @@ from openai import OpenAI
 import anthropic
 from datetime import datetime
 import json
+import replicate
+import stability_sdk
 
 # Page config and title
 st.set_page_config(page_title="AI Assistant Hub", layout="wide")
@@ -21,28 +23,56 @@ st.title("🤖 Enhanced AI Assistant Hub")
 # Sidebar configuration
 with st.sidebar:
     st.header("🔑 API Configuration")
+    
+    # API Key inputs
     openai_api_key = st.text_input("OpenAI API Key", key="openai_api_key", type="password")
     anthropic_api_key = st.text_input("Anthropic API Key", key="anthropic_api_key", type="password")
+    replicate_api_key = st.text_input("Replicate API Key", key="replicate_api_key", type="password")
+    stability_api_key = st.text_input("Stability API Key", key="stability_api_key", type="password")
     
+    # Save/Load API Keys
+    if st.button("Save API Keys"):
+        api_keys = {
+            "openai_api_key": openai_api_key,
+            "anthropic_api_key": anthropic_api_key,
+            "replicate_api_key": replicate_api_key,
+            "stability_api_key": stability_api_key
+        }
+        with open("api_keys.json", "w") as f:
+            json.dump(api_keys, f)
+        st.success("API Keys saved successfully!")
+    
+    if st.button("Load API Keys"):
+        try:
+            with open("api_keys.json", "r") as f:
+                api_keys = json.load(f)
+            openai_api_key = api_keys.get("openai_api_key", "")
+            anthropic_api_key = api_keys.get("anthropic_api_key", "")
+            replicate_api_key = api_keys.get("replicate_api_key", "")
+            stability_api_key = api_keys.get("stability_api_key", "")
+            st.success("API Keys loaded successfully!")
+        except FileNotFoundError:
+            st.error("No saved API Keys file found.")
+
     st.markdown("---")
     
     # Model selection
     st.header("⚙️ Settings")
-    openai_model = st.selectbox(
-        "OpenAI Model",
-        [
-            "gpt-3.5-turbo", "gpt-4-turbo", "gpt-4o", "gpt-4o-mini",
-            "gpt-4o-realtime-preview", "gpt-4o-audio-preview"
-        ]
-    )
-    anthropic_model = st.selectbox(
-        "Anthropic Model",
-        ["claude-3-sonnet-20240229", "claude-3-opus-20240229"]
-    )
     
-    # Temperature settings
+    openai_models = [
+        "gpt-3.5-turbo", "gpt-4-turbo", "gpt-4-1106-preview", "gpt-4-0314", "gpt-4-0613",
+        "gpt-4o", "gpt-4o-2024-08-06", "chatgpt-4o-latest", "gpt-4o-mini",
+        "gpt-4o-mini-2024-07-18", "gpt-4o-realtime-preview", "gpt-4o-audio-preview",
+        "gpt-4o-realtime-preview-2024-10-01", "gpt-4o-audio-preview-2024-10-01",
+        "o1-preview", "o1-preview-2024-09-12", "o1-mini", "o1-mini-2024-09-12"
+    ]
+    
+    openai_model = st.selectbox("OpenAI Model", openai_models)
+    anthropic_model = st.selectbox("Anthropic Model", ["claude-3-sonnet-20240229", "claude-3-opus-20240229"])
+    
+    # Temperature setting
     temperature = st.slider("Temperature", 0.0, 1.0, 0.7)
-    
+
     st.markdown("---")
     st.markdown("""
     ### Get API Keys
@@ -59,39 +89,45 @@ if "current_file" not in st.session_state:
     st.session_state.current_file = None
 
 # Create tabs
-tab1, tab2, tab3, tab4 = st.tabs([
-    "💬 AI Chat", 
-    "📝 Document Analysis",
-    "🔄 AI Model Comparison",
-    "📊 Chat History"
-])
+tab1, tab2, tab3 = st.tabs(["💬 Chat & Document Analysis", "🔄 AI Model Comparison", "📊 Chat History"])
 
-# Tab 1: Enhanced AI Chat
+# Tab 1: Combined Chat and Document Analysis
 with tab1:
-    st.header("Chat with AI")
+    st.header("Chat & Document Analysis")
     
-    # Model selector for this chat
-    chat_model = st.radio(
-        "Select AI Model",
-        ["OpenAI GPT", "Anthropic Claude"],
-        horizontal=True
-    )
+    # Model selector
+    chat_model = st.radio("Select AI Model", ["OpenAI GPT", "Anthropic Claude"], horizontal=True)
     
-    # Display chat messages
+    # Chat display
     for msg in st.session_state.messages:
         st.chat_message(msg["role"]).write(msg["content"])
     
-    if chat_prompt := st.chat_input("Send a message"):
+    # File upload and display content
+    uploaded_file = st.file_uploader("Upload a document", type=["txt", "md", "pdf", "docx"])
+    if uploaded_file:
+        st.session_state.current_file = uploaded_file
+        content = uploaded_file.read().decode()
+        with st.expander("Document Content"):
+            st.text(content)
+    
+    # Chat input
+    if chat_prompt := st.chat_input("Send a message or ask a question about the document"):
         if chat_model == "OpenAI GPT" and not openai_api_key:
             st.info("Please add your OpenAI API key to continue.")
             st.stop()
         elif chat_model == "Anthropic Claude" and not anthropic_api_key:
             st.info("Please add your Anthropic API key to continue.")
             st.stop()
-            
+        
+        # Send message
         try:
             st.session_state.messages.append({"role": "user", "content": chat_prompt})
             st.chat_message("user").write(chat_prompt)
+            
+            # Set up question based on chat or document
+            question = chat_prompt
+            if uploaded_file:
+                question = f"Here's a document:\n\n{content}\n\n{chat_prompt}"
             
             if chat_model == "OpenAI GPT":
                 client = OpenAI(api_key=openai_api_key)
@@ -107,10 +143,7 @@ with tab1:
                     model=anthropic_model,
                     max_tokens=2000,
                     temperature=temperature,
-                    messages=[{
-                        "role": "user",
-                        "content": chat_prompt
-                    }]
+                    messages=[{"role": "user", "content": question}]
                 )
                 msg = message.content[0].text
             
@@ -124,63 +157,12 @@ with tab1:
                 "prompt": chat_prompt,
                 "response": msg
             })
-            
+        
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
 
-# Tab 2: Document Analysis
+# Tab 2: AI Model Comparison
 with tab2:
-    st.header("Document Analysis")
-    
-    uploaded_file = st.file_uploader("Upload a document", type=["txt", "md", "pdf", "docx"])
-    if uploaded_file:
-        st.session_state.current_file = uploaded_file
-        
-        # Display file content
-        try:
-            content = uploaded_file.read().decode()
-            with st.expander("Document Content"):
-                st.text(content)
-            
-            # Analysis options
-            analysis_type = st.selectbox(
-                "Choose analysis type",
-                ["Summary", "Key Points", "Sentiment Analysis", "Custom Question"]
-            )
-            
-            if analysis_type == "Custom Question":
-                question = st.text_input("Enter your question about the document")
-            else:
-                question = f"Provide a {analysis_type.lower()} of this document."
-            
-            if st.button("Analyze"):
-                if not anthropic_api_key:
-                    st.info("Please add your Anthropic API key to continue.")
-                    st.stop()
-                
-                try:
-                    client = anthropic.Client(api_key=anthropic_api_key)
-                    message = client.messages.create(
-                        model=anthropic_model,
-                        max_tokens=2000,
-                        temperature=temperature,
-                        messages=[{
-                            "role": "user",
-                            "content": f"Here's a document:\n\n{content}\n\n{question}"
-                        }]
-                    )
-                    
-                    st.write("### Analysis Results")
-                    st.write(message.content[0].text)
-                    
-                except Exception as e:
-                    st.error(f"An error occurred: {str(e)}")
-        
-        except Exception as e:
-            st.error(f"Error reading file: {str(e)}")
-
-# Tab 3: AI Model Comparison
-with tab3:
     st.header("AI Model Comparison")
     
     comparison_prompt = st.text_area("Enter text to compare responses across models")
@@ -189,9 +171,8 @@ with tab3:
         if not (openai_api_key and anthropic_api_key):
             st.info("Please add both API keys to compare models.")
             st.stop()
-            
+        
         try:
-            # Create columns for comparison
             col1, col2 = st.columns(2)
             
             with col1:
@@ -213,39 +194,26 @@ with tab3:
                         model=anthropic_model,
                         max_tokens=2000,
                         temperature=temperature,
-                        messages=[{
-                            "role": "user",
-                            "content": comparison_prompt
-                        }]
+                        messages=[{"role": "user", "content": comparison_prompt}]
                     )
                     st.write(message.content[0].text)
-                    
+        
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
 
-# Tab 4: Chat History
-with tab4:
+# Tab 3: Chat History
+with tab3:
     st.header("Chat History")
     
     if st.session_state.conversation_history:
-        # Add download button for chat history
-        if st.button("Download Chat History"):
-            history_str = json.dumps(st.session_state.conversation_history, indent=2)
-            st.download_button(
-                "Download JSON",
-                history_str,
-                file_name=f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json"
-            )
+        if st.button("Clear History"):
+            st.session_state.conversation_history = []
+            st.success("History cleared.")
         
-        # Display history
-        for idx, entry in enumerate(reversed(st.session_state.conversation_history)):
-            with st.expander(f"{entry['timestamp']} - {entry['model']}"):
-                st.write("**Prompt:**", entry['prompt'])
-                st.write("**Response:**", entry['response'])
+        for record in st.session_state.conversation_history:
+            with st.expander(f"Interaction on {record['timestamp']}"):
+                st.write("**Model:**", record["model"])
+                st.write("**Prompt:**", record["prompt"])
+                st.write("**Response:**", record["response"])
     else:
-        st.info("No chat history available yet.")
-
-# Footer
-st.markdown("---")
-st.markdown("Made with ❤️ using Streamlit")
+        st.info("No chat history available.")
