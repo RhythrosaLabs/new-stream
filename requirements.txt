@@ -6,3 +6,4 @@ duckduckgo-search
 langchain
 langchain-community
 langchain-openai
+replicate
