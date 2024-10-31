@@ -3,7 +3,6 @@ import openai
 import anthropic
 import os
 import tempfile
-import requests
 import base64
 from langchain.agents import initialize_agent, Tool, AgentType
 from langchain.callbacks import StreamlitCallbackHandler
@@ -31,7 +30,7 @@ logger = logging.getLogger(__name__)
 # ============================
 
 st.set_page_config(
-    page_title="All-in-One AI Assistant",
+    page_title="🤖 All-in-One AI Assistant",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -73,8 +72,8 @@ if not openai_api_key:
 
 if not anthropic_api_key:
     st.warning("Please enter your Anthropic API key to enable Document Q&A.")
-    # Depending on your needs, you might want to allow the app to continue without Anthropic.
-    # For this example, we'll allow it to continue but disable document Q&A.
+    # Optionally, you can allow the app to continue without Anthropic features
+    # For this example, we'll proceed but disable document Q&A if the key is missing.
 
 # ============================
 # Set API Keys
@@ -83,8 +82,9 @@ if not anthropic_api_key:
 os.environ["OPENAI_API_KEY"] = openai_api_key
 openai.api_key = openai_api_key
 
+# Initialize Anthropic client if API key is provided
 try:
-    anthropic_client = anthropic.Client(anthropic_api_key) if anthropic_api_key else None
+    anthropic_client = anthropic.Client(api_key=anthropic_api_key) if anthropic_api_key else None
 except Exception as e:
     st.error(f"Failed to initialize Anthropic client: {e}")
     anthropic_client = None
