@@ -1,6 +1,6 @@
 import streamlit as st
 import anthropic
-import openai  # Correct import for OpenAI
+import openai
 from langchain.agents import initialize_agent, AgentType
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.chat_models import ChatOpenAI
@@ -19,7 +19,7 @@ with st.sidebar:
     st.markdown("[View the source code](https://github.com/streamlit/llm-examples)")
     st.markdown("[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/streamlit/llm-examples?quickstart=1)")
 
-# Main tabs: Command Line Chat, Files, API Settings
+# Main tabs: Command Line Chat, Files
 st.title("🔧 Integrated Chat Interface")
 tab1, tab2 = st.tabs(["💬 Command Line Chat", "📂 Files"])
 
@@ -39,12 +39,14 @@ with tab1:
             role_icon = "🤖 Assistant" if msg["role"] == "assistant" else "🧑 User"
             st.markdown(f"**{role_icon}:** {msg['content']}")
 
-    if st.button("Send"):
-        if not (openai_api_key or anthropic_api_key):
+    # Send button to process input
+    if st.button("Send") and user_input:
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        
+        if not openai_api_key and not anthropic_api_key:
             st.info("Please add your API keys to continue.")
-        elif user_input:  # Only proceed if there's input
-            st.session_state.messages.append({"role": "user", "content": user_input})
-
+        else:
+            # Analyze text-based input to decide which action to take
             if "analyze" in user_input.lower() and anthropic_api_key:
                 # File analysis using Anthropic
                 uploaded_file = st.file_uploader("Upload a file to analyze", type=("txt", "md", "pdf"))
@@ -70,15 +72,14 @@ with tab1:
                 st.session_state.messages.append({"role": "assistant", "content": response})
 
             elif "analyze image" in user_input.lower() and openai_api_key:
-                # Image analysis using OpenAI
+                # Image analysis using OpenAI (if such functionality exists)
                 uploaded_image = st.file_uploader("Upload an image to analyze", type=["jpg", "png"])
                 if uploaded_image:
                     image = Image.open(uploaded_image)
                     img_bytes = io.BytesIO()
                     image.save(img_bytes, format='PNG')
                     img_data = img_bytes.getvalue()
-                    # Assuming the OpenAI API can take image data and return analysis
-                    # Note: This part needs an API endpoint for image analysis
+                    # Placeholder for image analysis
                     st.session_state.messages.append({"role": "assistant", "content": "Image analysis completed."})
 
             elif openai_api_key:
