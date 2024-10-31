@@ -113,7 +113,10 @@ if uploaded_file:
         st.stop()
     finally:
         # Delete the temporary file
-        os.unlink(tmp_file_path)
+        try:
+            os.unlink(tmp_file_path)
+        except Exception as unlink_error:
+            st.warning(f"Could not delete temporary file: {unlink_error}")
 
 # ============================
 # Define Tools for the Agent
@@ -143,7 +146,6 @@ def generate_image(prompt: str) -> str:
     try:
         response = openai.Image.create(
             prompt=prompt,
-            model="dall-e-3",
             size="1024x1024",
             n=1,
             response_format="url"
@@ -180,8 +182,11 @@ def answer_question_about_document(question: str) -> str:
         retriever=retriever,
         return_source_documents=False
     )
-    answer = qa_chain.run(question)
-    return answer
+    try:
+        answer = qa_chain.run(question)
+        return answer
+    except Exception as e:
+        return f"Error answering question: {e}"
 
 document_qa_tool = Tool(
     name="document_qa",
