@@ -7,34 +7,66 @@ import base64
 from io import BytesIO
 from PIL import Image
 import json
+import streamlit_drawable_canvas as st_canvas
 
 # Directory to save generated files
 GENERATED_FILES_DIR = "generated_files"
 if not os.path.exists(GENERATED_FILES_DIR):
     os.makedirs(GENERATED_FILES_DIR)
 
-# Custom CSS for layout
+# Custom CSS for Chat Interface
 st.markdown("""
     <style>
-        .tab-container {
-            padding: 20px;
+        /* Container to hold chat messages and make it scrollable */
+        .chat-container {
+            height: 70vh;
+            overflow-y: auto;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 90px; /* Space for fixed input area */
         }
-        .section-title {
-            font-size: 1.5em;
-            margin-bottom: 10px;
+        /* Fixed input area at the bottom */
+        .fixed-input {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            max-width: 800px;
+            padding: 10px;
+            background-color: white;
+            border-top: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            z-index: 1000;
         }
-        .generated-image, .generated-video, .generated-model {
-            max-width: 100%;
-            height: auto;
+        /* Adjust main content to avoid overlap with the fixed input */
+        .main-content {
+            padding-bottom: 90px;
         }
     </style>
 """, unsafe_allow_html=True)
 
 # Sidebar for API Key Configuration
-st.sidebar.header("🔑 API Configuration")
-st.sidebar.markdown("Enter your Stability AI API Key below:")
-api_key = st.sidebar.text_input("Stability AI API Key", type="password")
+with st.sidebar:
+    st.header("🔑 API Configuration")
+    openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password")
+    stability_api_key = st.text_input("Stability AI API Key", key="stability_ai_api_key", type="password")
+    st.markdown("**Note:** Ensure your API keys are valid to access all features.")
 
+# Titles for the application
+st.title("🌀 Unified AI Chat Interface")
+
+# Initialize session state for messages and file management
+if "messages" not in st.session_state:
+    st.session_state["messages"] = [{"role": "assistant", "content": "Hello! How can I assist you today?"}]
+if "files" not in st.session_state:
+    st.session_state["files"] = {}
+
+# Tabs for Chat and File Management
+tab1, tab2 = st.tabs(["💬 Chat", "📁 File Management"])
+
+# --- Helper Functions ---
 # Function to save generated files
 def save_file(content, filename):
     file_path = os.path.join(GENERATED_FILES_DIR, filename)
@@ -76,496 +108,325 @@ def display_3d_model(glb_bytes, caption=None):
     if caption:
         st.caption(caption)
 
-# Tabs for different functionalities
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🔑 API Configuration",
-    "🖼️ Image Generation & Editing",
-    "🎞️ Video Generation",
-    "🔷 3D Generation",
-    "📁 File Management"
-])
-
-# --- Tab 1: API Configuration ---
+# --- Tab 1: Chat ---
 with tab1:
-    st.header("🔑 API Configuration")
-    st.markdown("Enter your Stability AI API Key to enable all features.")
-    if api_key:
-        st.success("API Key is set and verified.")
-        st.session_state["api_key"] = api_key
-    else:
-        st.warning("Please enter your Stability AI API Key in the sidebar.")
+    st.write("Interact with AI models for general chat, file analysis, web search, image generation, video creation, and 3D modeling.")
 
-# Ensure API Key is provided for other tabs
-if 'api_key' not in st.session_state and tab2 != st.session_state.get('current_tab'):
-    st.warning("Please enter your Stability AI API Key in the sidebar to access other features.")
+    # Display chat messages in a scrollable container
+    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+    for msg in st.session_state["messages"]:
+        if msg.get("image"):
+            display_image(msg["image"], caption=msg["content"])
+        elif msg.get("video"):
+            display_video(msg["video"], caption=msg["content"])
+        elif msg.get("model_3d"):
+            display_3d_model(msg["model_3d"], caption=msg["content"])
+        else:
+            st.chat_message(msg["role"]).write(msg["content"])
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# --- Tab 2: Image Generation & Editing ---
-with tab2:
-    st.header("🖼️ Image Generation & Editing")
-    if 'api_key' not in st.session_state:
-        st.warning("Please enter your Stability AI API Key in the sidebar to access this feature.")
-    else:
-        sub_tab1, sub_tab2, sub_tab3, sub_tab4 = st.tabs([
-            "📝 Text-to-Image",
-            "🖼️ Image-to-Image",
-            "✨ Image Effects",
-            "🎨 Canvas"
-        ])
+    # Fixed input area for file upload and text input at the bottom of the page
+    st.markdown('<div class="fixed-input">', unsafe_allow_html=True)
+    with st.form(key='chat_form', clear_on_submit=True):
+        uploaded_file = st.file_uploader("Attach file", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], label_visibility="collapsed")
+        prompt = st.text_input("Type your command here...", key="chat_input", label_visibility="collapsed")
+        submit = st.form_submit_button("Send")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-        # --- Sub-Tab 2.1: Text-to-Image ---
-        with sub_tab1:
-            st.subheader("📝 Text-to-Image")
-            with st.form(key='text_to_image_form'):
-                model_type = st.selectbox("Select Model:", [
-                    "Stable Image Ultra", "Stable Image Core",
-                    "Stable Diffusion 3.5 Large", "Stable Diffusion 3.5 Large Turbo",
-                    "Stable Diffusion 3.0 Large", "Stable Diffusion 3.0 Large Turbo", "Stable Diffusion 3.0 Medium"
-                ])
-                prompt = st.text_area("Prompt:")
-                negative_prompt = st.text_area("Negative Prompt:")
-                aspect_ratio = st.selectbox("Aspect Ratio:", ["1:1", "16:9", "21:9", "2:3", "3:2", "4:5", "5:4", "9:16", "9:21"])
-                seed = st.number_input("Seed (0 for random):", min_value=0, step=1, value=0)
-                output_format = st.selectbox("Output Format:", ["png", "jpeg", "webp"])
-                cfg_scale = st.slider("CFG Scale:", 0.0, 35.0, 7.0, 0.1)
-                steps = st.slider("Steps:", 1, 150, 50)
-                sampler = st.selectbox("Sampler:", [
-                    "DDIM", "DDPM", "K_DPMPP_2M", "K_DPMPP_2S_ANCESTRAL",
-                    "K_DPM_2", "K_DPM_2_ANCESTRAL", "K_EULER",
-                    "K_EULER_ANCESTRAL", "K_HEUN", "K_LMS"
-                ])
-                samples = st.number_input("Samples:", min_value=1, max_value=10, value=1)
-                submit_tti = st.form_submit_button("Generate Image")
+    # If a file is uploaded, add it to the file management system
+    if uploaded_file:
+        file_content = uploaded_file.read()
+        st.session_state["files"][uploaded_file.name] = file_content
+        st.session_state["messages"].append({"role": "assistant", "content": f"📁 File '{uploaded_file.name}' uploaded successfully."})
+        st.success(f"File '{uploaded_file.name}' uploaded successfully.")
 
-            if submit_tti:
-                def generate_text_to_image():
-                    st.info("Generating image...")
+    if submit and prompt:
+        st.session_state["messages"].append({"role": "user", "content": prompt})
+        st.chat_message("user").write(prompt)
+
+        # Ensure both API keys are provided
+        if not openai_api_key or not stability_api_key:
+            st.error("Please enter both OpenAI and Stability AI API keys in the sidebar to continue.")
+        else:
+            # Initialize headers
+            headers_openai = {
+                "Authorization": f"Bearer {openai_api_key}",
+                "Content-Type": "application/json"
+            }
+            headers_stability = {
+                "Authorization": f"Bearer {stability_api_key}",
+                "Content-Type": "application/json"
+            }
+
+            # Analyze the prompt to determine the task
+            analysis_prompt = f"Analyze the following user request to determine if it is for general chat, web search, file analysis, image generation, video generation, or 3D model generation. Request: '{prompt}'"
+
+            analysis_payload = {
+                "model": "gpt-4-turbo",
+                "messages": [{"role": "system", "content": analysis_prompt}],
+                "max_tokens": 50,
+                "temperature": 0.5
+            }
+
+            def analyze_prompt():
+                try:
+                    analysis_response = requests.post(
+                        "https://api.openai.com/v1/chat/completions",
+                        headers=headers_openai,
+                        json=analysis_payload
+                    )
+                    if analysis_response.status_code == 200:
+                        analysis_result = analysis_response.json()['choices'][0]['message']['content'].strip().lower()
+                        handle_task(analysis_result)
+                    else:
+                        st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error analyzing prompt: {analysis_response.status_code} - {analysis_response.text}"})
+                except Exception as e:
+                    st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error analyzing prompt: {e}"})
+
+            def handle_task(task_decision):
+                if "image generation" in task_decision:
+                    generate_image(prompt)
+                elif "file analysis" in task_decision:
+                    analyze_file(prompt)
+                elif "web search" in task_decision:
+                    perform_web_search(prompt)
+                elif "video generation" in task_decision:
+                    generate_video(prompt)
+                elif "3d model generation" in task_decision:
+                    generate_3d_model(prompt)
+                else:
+                    general_chat(prompt)
+
+            def generate_image(prompt_text):
+                def task():
+                    st.session_state["messages"].append({"role": "assistant", "content": "🖼️ Generating image..."})
+                    st.experimental_rerun()
+
+                    # Prepare data for Stability AI
                     data = {
-                        "prompt": prompt,
-                        "negative_prompt": negative_prompt,
-                        "aspect_ratio": aspect_ratio,
-                        "seed": seed,
-                        "output_format": output_format,
-                        "cfg_scale": cfg_scale,
-                        "steps": steps,
-                        "sampler": sampler,
-                        "samples": samples,
-                        "model": model_type.lower().replace(" ", "-")
+                        "prompt": prompt_text,
+                        "model": "stable-diffusion-3.0-large",
+                        "steps": 50,
+                        "sampler": "DDIM",
+                        "cfg_scale": 7.0,
+                        "seed": 0,
+                        "output_format": "png",
+                        "mode": "text-to-image",
+                        "strength": 0.5
                     }
-                    headers = {
-                        "Authorization": f"Bearer {st.session_state['api_key']}",
-                        "Accept": "application/json"
-                    }
+
                     url = "https://api.stability.ai/v2beta/stable-image/generate"
 
-                    response = requests.post(url, headers=headers, data=data)
-                    if response.status_code == 200:
-                        data = response.json()
-                        if 'artifacts' in data:
-                            img_data = base64.b64decode(data['artifacts'][0]['base64'])
-                            filename = f"text_to_image_{int(time.time())}.{output_format}"
-                            save_file(img_data, filename)
-                            st.success("Image generated successfully!")
-                            display_image(img_data, caption=prompt)
-                        else:
-                            st.error("No artifacts found in the response.")
-                    else:
-                        st.error(f"Error: {response.status_code} - {response.text}")
-
-                generate_text_to_image()
-
-        # --- Sub-Tab 2.2: Image-to-Image ---
-        with sub_tab2:
-            st.subheader("🖼️ Image-to-Image")
-            uploaded_img = st.file_uploader("Upload Image for Modification", type=["png", "jpg", "jpeg", "bmp"])
-
-            if uploaded_img:
-                image = Image.open(uploaded_img)
-                st.image(image, caption="Uploaded Image", use_column_width=True)
-
-                with st.form(key='image_to_image_form'):
-                    model_type = st.selectbox("Select Model:", [
-                        "Stable Diffusion 3.5 Large", "Stable Diffusion 3.5 Large Turbo",
-                        "Stable Diffusion 3.0 Large", "Stable Diffusion 3.0 Large Turbo", "Stable Diffusion 3.0 Medium"
-                    ])
-                    prompt = st.text_area("Prompt:")
-                    negative_prompt = st.text_area("Negative Prompt:")
-                    image_strength = st.slider("Image Strength:", 0.0, 1.0, 0.5, 0.01)
-                    seed = st.number_input("Seed (0 for random):", min_value=0, step=1, value=0)
-                    output_format = st.selectbox("Output Format:", ["png", "jpeg", "webp"])
-                    steps = st.slider("Steps:", 1, 150, 50)
-                    sampler = st.selectbox("Sampler:", [
-                        "DDIM", "DDPM", "K_DPMPP_2M", "K_DPMPP_2S_ANCESTRAL",
-                        "K_DPM_2", "K_DPM_2_ANCESTRAL", "K_EULER",
-                        "K_EULER_ANCESTRAL", "K_HEUN", "K_LMS"
-                    ])
-                    cfg_scale = st.slider("CFG Scale:", 0.0, 35.0, 7.0, 0.1)
-                    samples = st.number_input("Samples:", min_value=1, max_value=10, value=1)
-                    submit_iti = st.form_submit_button("Generate Image")
-
-                if submit_iti:
-                    def generate_image_to_image():
-                        st.info("Generating modified image...")
-                        data = {
-                            "prompt": prompt,
-                            "negative_prompt": negative_prompt,
-                            "seed": seed,
-                            "output_format": output_format,
-                            "strength": image_strength,
-                            "mode": "image-to-image",
-                            "model": model_type.lower().replace(" ", "-"),
-                            "steps": steps,
-                            "sampler": sampler,
-                            "cfg_scale": cfg_scale,
-                            "samples": samples,
-                        }
-                        headers = {
-                            "Authorization": f"Bearer {st.session_state['api_key']}",
-                            "Accept": "application/json"
-                        }
-                        url = "https://api.stability.ai/v2beta/stable-image/generate"
-
-                        files = {
-                            "image": uploaded_img.read(),
-                        }
-
-                        response = requests.post(url, headers=headers, files=files, data=data)
+                    try:
+                        response = requests.post(url, headers=headers_stability, json=data)
                         if response.status_code == 200:
-                            data = response.json()
-                            if 'artifacts' in data:
-                                img_data = base64.b64decode(data['artifacts'][0]['base64'])
-                                filename = f"image_to_image_{int(time.time())}.{output_format}"
+                            data_response = response.json()
+                            if 'artifacts' in data_response and len(data_response['artifacts']) > 0:
+                                img_data = base64.b64decode(data_response['artifacts'][0]['base64'])
+                                filename = f"text_to_image_{int(time.time())}.{data['output_format']}"
                                 save_file(img_data, filename)
-                                st.success("Image generated successfully!")
-                                display_image(img_data, caption=prompt)
+                                st.session_state["messages"].append({"role": "assistant", "content": f"🖼️ Image generated for: '{prompt_text}'", "image": img_data})
                             else:
-                                st.error("No artifacts found in the response.")
+                                st.session_state["messages"].append({"role": "assistant", "content": "❌ No artifacts found in the response."})
                         else:
-                            st.error(f"Error: {response.status_code} - {response.text}")
+                            st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error: {response.status_code} - {response.text}"})
+                    except Exception as e:
+                        st.session_state["messages"].append({"role": "assistant", "content": f"❌ Image generation error: {e}"})
 
-                    generate_image_to_image()
+                threading.Thread(target=task).start()
 
-        # --- Sub-Tab 2.3: Image Effects ---
-        with sub_tab3:
-            st.subheader("✨ Image Effects")
-            uploaded_effect_img = st.file_uploader("Upload Image for Effects", type=["png", "jpg", "jpeg", "bmp"])
+            def analyze_file(prompt_text):
+                def task():
+                    if uploaded_file:
+                        st.session_state["messages"].append({"role": "assistant", "content": "📄 Analyzing the uploaded file..."})
+                        st.experimental_rerun()
 
-            if uploaded_effect_img:
-                image = Image.open(uploaded_effect_img)
-                st.image(image, caption="Uploaded Image", use_column_width=True)
-
-                effect = st.selectbox("Select Effect:", ["Upscale", "Remove Background"])
-
-                with st.form(key='image_effects_form'):
-                    if effect == "Upscale":
-                        upscale_type = st.selectbox("Upscale Type:", ["Fast", "Conservative", "Creative"])
-                        output_format = st.selectbox("Output Format:", ["png", "jpeg", "webp"])
-                        prompt_upscale = st.text_area("Upscale Prompt:")
-                        negative_prompt_upscale = st.text_area("Negative Prompt:")
-                        seed_upscale = st.number_input("Seed (0 for random):", min_value=0, step=1, value=0)
-                        creativity = st.slider("Creativity:", 0.0, 1.0, 0.35, 0.01)
-                    elif effect == "Remove Background":
-                        output_format_remove_bg = st.selectbox("Output Format:", ["png", "jpeg", "webp"])
-                    submit_effect = st.form_submit_button("Apply Effect")
-
-                if submit_effect:
-                    def apply_image_effect():
-                        st.info("Applying effect...")
-                        headers = {
-                            "Authorization": f"Bearer {st.session_state['api_key']}",
-                            "Accept": "application/json"
-                        }
-                        files = {
-                            "image": uploaded_effect_img.read(),
-                        }
-                        data = {}
-                        url = ""
-                        if effect == "Upscale":
-                            data["output_format"] = output_format
-                            if upscale_type == "Fast":
-                                url = "https://api.stability.ai/v2beta/stable-image/upscale/fast"
-                            else:
-                                data["prompt"] = prompt_upscale
-                                data["negative_prompt"] = negative_prompt_upscale
-                                data["seed"] = seed_upscale
-                                data["creativity"] = creativity
-                                if upscale_type == "Conservative":
-                                    url = "https://api.stability.ai/v2beta/stable-image/upscale/conservative"
-                                else:
-                                    url = "https://api.stability.ai/v2beta/stable-image/upscale/creative"
-                        elif effect == "Remove Background":
-                            data["output_format"] = output_format_remove_bg
-                            url = "https://api.stability.ai/v2beta/stable-image/edit/remove-background"
-
-                        response = requests.post(url, headers=headers, files=files, data=data)
-                        if response.status_code == 200:
-                            img_data = response.content
-                            filename = f"{effect.lower()}_{int(time.time())}.{output_format if effect == 'Upscale' else output_format_remove_bg}"
-                            save_file(img_data, filename)
-                            st.success("Effect applied successfully!")
-                            if effect == "Upscale":
-                                display_image(img_data, caption="Upscaled Image")
-                            elif effect == "Remove Background":
-                                display_image(img_data, caption="Background Removed Image")
+                        file_content = st.session_state["files"][uploaded_file.name]
+                        # Assuming the file is text-based for simplicity
+                        if uploaded_file.type.startswith("text/"):
+                            file_text = file_content.decode()
+                        elif uploaded_file.type.startswith("image/"):
+                            # Convert image to base64 string
+                            file_text = base64.b64encode(file_content).decode()
                         else:
-                            st.error(f"Error: {response.status_code} - {response.text}")
+                            file_text = "Unsupported file type for analysis."
 
-                    apply_image_effect()
+                        analysis_payload = {
+                            "model": "gpt-4-turbo",
+                            "messages": [
+                                {"role": "system", "content": f"Analyze the content of the uploaded file '{uploaded_file.name}' and provide insights."},
+                                {"role": "user", "content": f"File content: {file_text}"}
+                            ],
+                            "max_tokens": 500,
+                            "temperature": 0.5
+                        }
 
-        # --- Sub-Tab 2.4: Canvas ---
-        with sub_tab4:
-            st.subheader("🎨 Canvas")
-            st.write("Draw on the canvas or upload an image to modify.")
-
-            canvas_mode = st.selectbox("Canvas Mode:", ["Draw", "Upload Image"])
-
-            if canvas_mode == "Draw":
-                import streamlit_drawable_canvas as st_canvas
-
-                stroke_width = st.slider("Stroke Width:", 1, 25, 3)
-                stroke_color = st.color_picker("Stroke Color:", "#000000")
-                bg_color = st.color_picker("Background Color:", "#FFFFFF")
-                drawing_mode = st.selectbox("Drawing Mode:", ["freedraw", "transform"])
-
-                canvas_result = st_canvas(
-                    fill_color="rgba(255, 255, 255, 0)",
-                    stroke_width=stroke_width,
-                    stroke_color=stroke_color,
-                    background_color=bg_color,
-                    update_streamlit=True,
-                    height=512,
-                    width=512,
-                    drawing_mode=drawing_mode,
-                    key="canvas",
-                )
-
-                if canvas_result.image_data is not None:
-                    img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
-                    buf = BytesIO()
-                    img.save(buf, format="PNG")
-                    byte_im = buf.getvalue()
-                    st.image(img, caption="Canvas Image", use_column_width=True)
-
-                    with st.form(key='canvas_image_form'):
-                        prompt_canvas = st.text_area("Prompt for Canvas Image Modification:")
-                        submit_canvas = st.form_submit_button("Generate Image from Canvas")
-
-                    if submit_canvas:
-                        def generate_from_canvas():
-                            st.info("Generating image from canvas...")
-                            data = {
-                                "prompt": prompt_canvas,
-                                "model": "stable-diffusion-3.0-large",
-                                "steps": 50,
-                                "sampler": "DDIM",
-                                "cfg_scale": 7.0,
-                                "seed": 0,
-                                "output_format": "png",
-                                "mode": "image-to-image",
-                                "strength": 0.5
-                            }
-                            headers = {
-                                "Authorization": f"Bearer {st.session_state['api_key']}",
-                                "Accept": "application/json"
-                            }
-                            url = "https://api.stability.ai/v2beta/stable-image/generate"
-
-                            files = {
-                                "image": buf.getvalue(),
-                            }
-
-                            response = requests.post(url, headers=headers, files=files, data=data)
+                        try:
+                            response = requests.post(
+                                "https://api.openai.com/v1/chat/completions",
+                                headers=headers_openai,
+                                json=analysis_payload
+                            )
                             if response.status_code == 200:
-                                data = response.json()
-                                if 'artifacts' in data:
-                                    img_data = base64.b64decode(data['artifacts'][0]['base64'])
-                                    filename = f"canvas_image_{int(time.time())}.png"
-                                    save_file(img_data, filename)
-                                    st.success("Image generated successfully from canvas!")
-                                    display_image(img_data, caption=prompt_canvas)
-                                else:
-                                    st.error("No artifacts found in the response.")
+                                analysis_result = response.json()['choices'][0]['message']['content'].strip()
+                                st.session_state["messages"].append({"role": "assistant", "content": analysis_result})
                             else:
-                                st.error(f"Error: {response.status_code} - {response.text}")
+                                st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error: {response.status_code} - {response.text}"})
+                        except Exception as e:
+                            st.session_state["messages"].append({"role": "assistant", "content": f"❌ File analysis error: {e}"})
+                    else:
+                        st.session_state["messages"].append({"role": "assistant", "content": "❌ Please upload a file for analysis."})
 
-                        generate_from_canvas()
+                threading.Thread(target=task).start()
 
-            elif canvas_mode == "Upload Image":
-                uploaded_canvas_img = st.file_uploader("Upload Image for Canvas", type=["png", "jpg", "jpeg", "bmp"])
-                if uploaded_canvas_img:
-                    image = Image.open(uploaded_canvas_img)
-                    st.image(image, caption="Uploaded Image", use_column_width=True)
+            def perform_web_search(prompt_text):
+                def task():
+                    st.session_state["messages"].append({"role": "assistant", "content": "🔍 Performing web search..."})
+                    st.experimental_rerun()
 
-                    with st.form(key='upload_canvas_form'):
-                        prompt_upload = st.text_area("Prompt for Image Modification:")
-                        submit_upload = st.form_submit_button("Generate Image from Uploaded Image")
+                    # Placeholder for actual web search implementation
+                    # You can integrate LangChain's DuckDuckGoSearchRun or any other search API here
+                    search_result = f"🌐 Search results for '{prompt_text}' are not implemented yet."
+                    st.session_state["messages"].append({"role": "assistant", "content": search_result})
 
-                    if submit_upload:
-                        def generate_from_uploaded_image():
-                            st.info("Generating image from uploaded image...")
-                            data = {
-                                "prompt": prompt_upload,
-                                "model": "stable-diffusion-3.0-large",
-                                "steps": 50,
-                                "sampler": "DDIM",
-                                "cfg_scale": 7.0,
-                                "seed": 0,
-                                "output_format": "png",
-                                "mode": "image-to-image",
-                                "strength": 0.5
-                            }
-                            headers = {
-                                "Authorization": f"Bearer {st.session_state['api_key']}",
-                                "Accept": "application/json"
-                            }
-                            url = "https://api.stability.ai/v2beta/stable-image/generate"
+                threading.Thread(target=task).start()
 
-                            files = {
-                                "image": uploaded_canvas_img.read(),
-                            }
+            def generate_video(prompt_text):
+                def task():
+                    st.session_state["messages"].append({"role": "assistant", "content": "🎞️ Generating video..."})
+                    st.experimental_rerun()
 
-                            response = requests.post(url, headers=headers, files=files, data=data)
-                            if response.status_code == 200:
-                                data = response.json()
-                                if 'artifacts' in data:
-                                    img_data = base64.b64decode(data['artifacts'][0]['base64'])
-                                    filename = f"uploaded_canvas_image_{int(time.time())}.png"
-                                    save_file(img_data, filename)
-                                    st.success("Image generated successfully from uploaded image!")
-                                    display_image(img_data, caption=prompt_upload)
-                                else:
-                                    st.error("No artifacts found in the response.")
-                            else:
-                                st.error(f"Error: {response.status_code} - {response.text}")
-
-                        generate_from_uploaded_image()
-
-# --- Tab 3: Video Generation ---
-with tab3:
-    st.header("🎞️ Video Generation")
-    if 'api_key' not in st.session_state:
-        st.warning("Please enter your Stability AI API Key in the sidebar to access this feature.")
-    else:
-        st.subheader("Generate Video from Image")
-        uploaded_video_img = st.file_uploader("Upload Initial Image for Video Generation", type=["png", "jpg", "jpeg", "bmp"])
-
-        if uploaded_video_img:
-            image = Image.open(uploaded_video_img)
-            st.image(image, caption="Uploaded Image", use_column_width=True)
-
-            with st.form(key='video_generation_form'):
-                cfg_scale_video = st.slider("CFG Scale:", 0.0, 10.0, 1.8, 0.1)
-                motion_bucket_id = st.number_input("Motion Bucket ID:", min_value=1, max_value=255, value=127, step=1)
-                seed_video = st.number_input("Seed (0 for random):", min_value=0, step=1, value=0)
-                submit_video = st.form_submit_button("Generate Video")
-
-            if submit_video:
-                def generate_video():
-                    st.info("Generating video...")
+                    # Placeholder parameters; in a real scenario, parse from prompt or use defaults
                     data = {
-                        "cfg_scale": cfg_scale_video,
-                        "motion_bucket_id": motion_bucket_id,
-                        "seed": seed_video
+                        "cfg_scale": 1.8,
+                        "motion_bucket_id": 127,
+                        "seed": 0
                     }
-                    headers = {
-                        "Authorization": f"Bearer {st.session_state['api_key']}",
-                    }
+
                     url = "https://api.stability.ai/v2beta/image-to-video"
 
-                    files = {
-                        "image": uploaded_video_img.read(),
-                    }
+                    if uploaded_file and uploaded_file.type.startswith("image/"):
+                        try:
+                            files = {
+                                "image": uploaded_file.read(),
+                            }
 
-                    response = requests.post(url, headers=headers, files=files, data=data)
-                    if response.status_code == 200:
-                        generation_id = response.json().get("id")
-                        st.info("Video generation started. Polling for result...")
+                            response = requests.post(url, headers=headers_stability, files=files, data=data)
+                            if response.status_code == 200:
+                                generation_id = response.json().get("id")
+                                st.session_state["messages"].append({"role": "assistant", "content": "⏳ Video generation started. Please wait..."})
+                                st.experimental_rerun()
 
-                        result_url = f"https://api.stability.ai/v2beta/image-to-video/result/{generation_id}"
-                        accept_header = "video/*"
-                        max_retries = 30
-                        retry_delay = 10  # seconds
+                                # Polling for video generation result
+                                result_url = f"https://api.stability.ai/v2beta/image-to-video/result/{generation_id}"
+                                accept_header = "video/*"
+                                max_retries = 30
+                                retry_delay = 10  # seconds
 
-                        for attempt in range(max_retries):
-                            time.sleep(retry_delay)
-                            result_response = requests.get(
-                                result_url,
-                                headers={
-                                    "Authorization": f"Bearer {st.session_state['api_key']}",
-                                    "Accept": accept_header,
-                                },
-                            )
-                            if result_response.status_code == 200:
-                                video_bytes = result_response.content
-                                filename = f"generated_video_{int(time.time())}.mp4"
-                                save_file(video_bytes, filename)
-                                st.success("Video generated successfully!")
-                                display_video(video_bytes, caption="Generated Video")
-                                break
-                            elif result_response.status_code == 202:
-                                st.info(f"Still processing... ({attempt + 1}/{max_retries})")
-                                continue
+                                for attempt in range(max_retries):
+                                    time.sleep(retry_delay)
+                                    result_response = requests.get(
+                                        result_url,
+                                        headers={
+                                            "Authorization": f"Bearer {stability_api_key}",
+                                            "Accept": accept_header,
+                                        },
+                                    )
+                                    if result_response.status_code == 200:
+                                        video_bytes = result_response.content
+                                        filename = f"generated_video_{int(time.time())}.mp4"
+                                        save_file(video_bytes, filename)
+                                        st.session_state["messages"].append({"role": "assistant", "content": "🎞️ Video generated successfully!", "video": video_bytes})
+                                        break
+                                    elif result_response.status_code == 202:
+                                        st.session_state["messages"].append({"role": "assistant", "content": f"⏳ Still processing... ({attempt + 1}/{max_retries})"})
+                                        st.experimental_rerun()
+                                        continue
+                                    else:
+                                        st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error: {result_response.status_code} - {result_response.text}"})
+                                        break
+                                else:
+                                    st.session_state["messages"].append({"role": "assistant", "content": "❌ Video generation timed out."})
                             else:
-                                st.error(f"Error: {result_response.status_code} - {result_response.text}")
-                                break
-                        else:
-                            st.error("Video generation timed out.")
+                                st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error: {response.status_code} - {response.text}"})
+                        except Exception as e:
+                            st.session_state["messages"].append({"role": "assistant", "content": f"❌ Video generation error: {e}"})
                     else:
-                        st.error(f"Error: {response.status_code} - {response.text}")
+                        st.session_state["messages"].append({"role": "assistant", "content": "❌ Please upload an image to generate a video."})
 
-                generate_video()
+                threading.Thread(target=task).start()
 
-# --- Tab 4: 3D Generation ---
-with tab4:
-    st.header("🔷 3D Generation")
-    if 'api_key' not in st.session_state:
-        st.warning("Please enter your Stability AI API Key in the sidebar to access this feature.")
-    else:
-        st.subheader("Generate 3D Model from Image")
-        uploaded_model_img = st.file_uploader("Upload Image for 3D Model Generation", type=["png", "jpg", "jpeg", "bmp"])
+            def generate_3d_model(prompt_text):
+                def task():
+                    st.session_state["messages"].append({"role": "assistant", "content": "🔷 Generating 3D model..."})
+                    st.experimental_rerun()
 
-        if uploaded_model_img:
-            image = Image.open(uploaded_model_img)
-            st.image(image, caption="Uploaded Image", use_column_width=True)
-
-            with st.form(key='model_generation_form'):
-                texture_resolution = st.selectbox("Texture Resolution:", ["512", "1024", "2048"])
-                foreground_ratio = st.slider("Foreground Ratio:", 0.1, 1.0, 0.85, 0.01)
-                remesh = st.selectbox("Remesh:", ["none", "quad", "triangle"])
-                vertex_count = st.number_input("Vertex Count (-1 for default):", min_value=-1, max_value=20000, value=-1, step=1)
-                submit_model = st.form_submit_button("Generate 3D Model")
-
-            if submit_model:
-                def generate_3d_model():
-                    st.info("Generating 3D model...")
+                    # Placeholder parameters; in a real scenario, parse from prompt or use defaults
                     data = {
-                        "texture_resolution": texture_resolution,
-                        "foreground_ratio": foreground_ratio,
-                        "remesh": remesh,
-                        "vertex_count": vertex_count
+                        "texture_resolution": "1024",
+                        "foreground_ratio": 0.85,
+                        "remesh": "none",
+                        "vertex_count": -1
                     }
-                    headers = {
-                        "Authorization": f"Bearer {st.session_state['api_key']}",
-                    }
+
                     url = "https://api.stability.ai/v2beta/3d/stable-fast-3d"
 
-                    files = {
-                        "image": uploaded_model_img.read(),
+                    if uploaded_file and uploaded_file.type.startswith("image/"):
+                        try:
+                            files = {
+                                "image": uploaded_file.read(),
+                            }
+
+                            response = requests.post(url, headers=headers_stability, files=files, data=data)
+                            if response.status_code == 200:
+                                glb_data = response.content
+                                filename = f"generated_model_{int(time.time())}.glb"
+                                save_file(glb_data, filename)
+                                glb_base64 = base64.b64encode(glb_data).decode()
+                                model_src = f"data:model/gltf-binary;base64,{glb_base64}"
+                                st.session_state["messages"].append({"role": "assistant", "content": "🔷 3D Model generated successfully!", "model_3d": model_src})
+                            else:
+                                st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error: {response.status_code} - {response.text}"})
+                        except Exception as e:
+                            st.session_state["messages"].append({"role": "assistant", "content": f"❌ 3D model generation error: {e}"})
+                    else:
+                        st.session_state["messages"].append({"role": "assistant", "content": "❌ Please upload an image to generate a 3D model."})
+
+                threading.Thread(target=task).start()
+
+            def general_chat(prompt_text):
+                def task():
+                    st.session_state["messages"].append({"role": "assistant", "content": "💬 Processing your request..."})
+                    st.experimental_rerun()
+
+                    chat_payload = {
+                        "model": "gpt-4-turbo",
+                        "messages": st.session_state["messages"],
+                        "max_tokens": 150,
+                        "temperature": 0.7
                     }
 
-                    response = requests.post(url, headers=headers, files=files, data=data)
-                    if response.status_code == 200:
-                        glb_data = response.content
-                        filename = f"generated_model_{int(time.time())}.glb"
-                        save_file(glb_data, filename)
-                        st.success("3D Model generated successfully!")
-                        display_3d_model(glb_data, caption="Generated 3D Model")
-                    else:
-                        st.error(f"Error: {response.status_code} - {response.text}")
+                    try:
+                        response = requests.post(
+                            "https://api.openai.com/v1/chat/completions",
+                            headers=headers_openai,
+                            json=chat_payload
+                        )
+                        if response.status_code == 200:
+                            chat_result = response.json()['choices'][0]['message']['content'].strip()
+                            st.session_state["messages"].append({"role": "assistant", "content": chat_result})
+                        else:
+                            st.session_state["messages"].append({"role": "assistant", "content": f"❌ Error: {response.status_code} - {response.text}"})
+                    except Exception as e:
+                        st.session_state["messages"].append({"role": "assistant", "content": f"❌ Chat response error: {e}"})
 
-                generate_3d_model()
+                threading.Thread(target=task).start()
 
-# --- Tab 5: File Management ---
-with tab5:
+            # Start analysis in a new thread
+            threading.Thread(target=analyze_prompt).start()
+
+# --- Tab 2: File Management ---
+with tab2:
     st.header("📁 File Management")
     st.subheader("Manage and View Generated Files")
 
@@ -591,4 +452,3 @@ with tab5:
             st.markdown("---")
     else:
         st.info("No files generated yet.")
-
