@@ -42,7 +42,7 @@ with tab1:
 
     if user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
-        st.experimental_update()
+        st.experimental_rerun()
 
     if st.button("Send"):
         if not (openai_api_key or anthropic_api_key):
@@ -90,7 +90,7 @@ with tab1:
                 msg = response.choices[0].message.content
                 st.session_state.messages.append({"role": "assistant", "content": msg})
 
-            st.experimental_update()
+            st.experimental_rerun()
 
 with tab2:
     # Files tab: Uploaded and created files
