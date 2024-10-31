@@ -9,9 +9,19 @@ import requests
 import base64
 from PIL import Image
 import io
+import os
+import time
+import shutil
+
+# Constants
+FILES_DIR = "generated_files"
+
+# Ensure the files directory exists
+if not os.path.exists(FILES_DIR):
+    os.makedirs(FILES_DIR)
 
 # Page config and title
-st.set_page_config(page_title="AI Assistant Hub", layout="wide")
+st.set_page_config(page_title="🤖 Enhanced AI Assistant Hub", layout="wide")
 
 # Custom CSS for better UI
 st.markdown("""
@@ -83,6 +93,7 @@ with st.sidebar:
     - [OpenAI API Keys](https://platform.openai.com/account/api-keys)
     - [Anthropic API Keys](https://console.anthropic.com/)
     - [Stability AI API Keys](https://platform.stability.ai/)
+    - [Replicate API Keys](https://replicate.com/account/apikey)
     """)
 
 # Initialize session states
@@ -99,7 +110,14 @@ def model_supports_temperature(model_name):
     return model_name not in unsupported_models
 
 # Create tabs
-tab1, tab2, tab3, tab4 = st.tabs(["💬 Chat & Document Analysis", "🔄 AI Model Comparison", "📊 Chat History", "🎨 Image Generation"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "💬 Chat & Document Analysis", 
+    "🔄 AI Model Comparison", 
+    "📊 Chat History", 
+    "🎨 Image Generation", 
+    "🎥 Image-to-Video", 
+    "🎵 Music Generation"
+])
 
 # ---------------------- Tab 1: Chat & Document Analysis ----------------------
 with tab1:
@@ -217,6 +235,10 @@ with tab2:
                         temperature=temperature
                     )
                     st.write(response.choices[0].message.content)
+                    # Save to files
+                    image_filename = f"{FILES_DIR}/openai_response_{int(time.time())}.txt"
+                    with open(image_filename, "w") as f:
+                        f.write(response.choices[0].message.content)
 
             with col2:
                 st.subheader("Anthropic Claude Response")
@@ -229,6 +251,10 @@ with tab2:
                         messages=[{"role": "user", "content": comparison_prompt}]
                     )
                     st.write(message.content[0].text)
+                    # Save to files
+                    image_filename = f"{FILES_DIR}/anthropic_response_{int(time.time())}.txt"
+                    with open(image_filename, "w") as f:
+                        f.write(message.content[0].text)
 
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
@@ -301,13 +327,12 @@ with tab4:
                     response = requests.post(url, headers=headers, data=data, files=files)
 
                     if response.status_code == 200:
-                        if output_format == "application/json" or "application/json" in response.headers.get("Content-Type", ""):
-                            response_json = response.json()
-                            image_data = base64.b64decode(response_json.get("image_base64", ""))
-                        else:
-                            image_data = response.content
-
+                        image_data = response.content
                         image = Image.open(io.BytesIO(image_data))
+
+                        # Save image to files directory
+                        image_filename = f"{FILES_DIR}/image_{int(time.time())}.{output_format}"
+                        image.save(image_filename)
 
                         st.image(image, caption="Generated Image", use_column_width=True)
 
@@ -315,7 +340,7 @@ with tab4:
                         buffered = io.BytesIO()
                         image.save(buffered, format=output_format.upper())
                         img_base64 = base64.b64encode(buffered.getvalue()).decode()
-                        href = f'<a href="data:image/{output_format};base64,{img_base64}" download="generated_image.{output_format}">Download Image</a>'
+                        href = f'<a href="data:image/{output_format};base64,{img_base64}" download="{os.path.basename(image_filename)}">Download Image</a>'
                         st.markdown(href, unsafe_allow_html=True)
 
                         st.success("Image generated successfully!")
@@ -330,3 +355,239 @@ with tab4:
                         st.error(f"Error {response.status_code}: {error_message}")
             except Exception as e:
                 st.error(f"An unexpected error occurred: {str(e)}")
+
+# ---------------------- Tab 5: Image-to-Video ----------------------
+with tab5:
+    st.header("🎥 Image-to-Video with Stable Video Diffusion")
+
+    if not stability_api_key:
+        st.info("Please enter your Stability AI API key in the sidebar to use this feature.")
+        st.stop()
+
+    generation_id = st.session_state.get("video_generation_id", None)
+
+    # Input fields for video generation
+    with st.form("video_generation_form"):
+        image = st.file_uploader("Upload an initial image", type=["png", "jpeg", "jpg"])
+        cfg_scale = st.slider("CFG Scale", 0.0, 10.0, 1.8)
+        motion_bucket_id = st.slider("Motion Bucket ID", 1, 255, 127)
+        seed = st.number_input("Seed (optional)", min_value=0, max_value=4294967294, value=0, step=1)
+        submit_button = st.form_submit_button(label="Start Video Generation")
+
+    if submit_button:
+        if not image:
+            st.error("Please upload an image to generate a video.")
+        elif image.size > 10 * 1024 * 1024:
+            st.error("The uploaded image exceeds the size limit of 10MiB.")
+        else:
+            try:
+                with st.spinner("Starting video generation..."):
+                    url = "https://api.stability.ai/v2beta/image-to-video"
+
+                    headers = {
+                        "Authorization": f"Bearer {stability_api_key}"
+                    }
+
+                    data = {
+                        "cfg_scale": cfg_scale,
+                        "motion_bucket_id": motion_bucket_id
+                    }
+
+                    if seed != 0:
+                        data["seed"] = seed
+
+                    # Save the uploaded image temporarily
+                    temp_image_path = f"{FILES_DIR}/temp_image_{int(time.time())}.{image.type.replace('image/', '')}"
+                    with open(temp_image_path, "wb") as f:
+                        f.write(image.getbuffer())
+
+                    files = {
+                        "image": open(temp_image_path, "rb")
+                    }
+
+                    response = requests.post(url, headers=headers, data=data, files=files)
+
+                    # Remove the temporary image
+                    os.remove(temp_image_path)
+
+                    if response.status_code == 200:
+                        generation_id = response.json().get('id')
+                        st.success(f"Video generation started. ID: {generation_id}")
+                        st.session_state.video_generation_id = generation_id
+                    elif response.status_code == 429:
+                        st.error("Rate limit exceeded. Please wait and try again later.")
+                    else:
+                        try:
+                            error_info = response.json()
+                            error_message = error_info.get("detail", "An error occurred.")
+                        except ValueError:
+                            error_message = response.text
+                        st.error(f"Error {response.status_code}: {error_message}")
+            except Exception as e:
+                st.error(f"An unexpected error occurred: {str(e)}")
+
+    if generation_id:
+        st.info(f"Polling for video generation result. ID: {generation_id}")
+        with st.spinner("Checking video generation status..."):
+            try:
+                poll_url = f"https://api.stability.ai/v2beta/image-to-video/result/{generation_id}"
+                headers = {
+                    "Authorization": f"Bearer {stability_api_key}",
+                    "Accept": "video/*"
+                }
+                response = requests.get(poll_url, headers=headers)
+
+                if response.status_code == 200:
+                    video_data = response.content
+                    video_filename = f"{FILES_DIR}/video_{int(time.time())}.mp4"
+                    with open(video_filename, "wb") as f:
+                        f.write(video_data)
+
+                    st.video(video_filename)
+
+                    # Provide download option
+                    with open(video_filename, "rb") as f:
+                        video_bytes = f.read()
+                        video_base64 = base64.b64encode(video_bytes).decode()
+                        href = f'<a href="data:video/mp4;base64,{video_base64}" download="{os.path.basename(video_filename)}">Download Video</a>'
+                        st.markdown(href, unsafe_allow_html=True)
+
+                    st.success("Video generation completed successfully!")
+
+                    # Optionally, remove the video after download
+                    # os.remove(video_filename)
+
+                    # Clear the generation ID
+                    st.session_state.video_generation_id = None
+                elif response.status_code == 202:
+                    st.warning("Video generation is still in-progress. Please wait and try again later.")
+                else:
+                    try:
+                        error_info = response.json()
+                        error_message = error_info.get("detail", "An error occurred.")
+                    except ValueError:
+                        error_message = response.text
+                    st.error(f"Error {response.status_code}: {error_message}")
+            except Exception as e:
+                st.error(f"An error occurred while fetching the video: {str(e)}")
+
+# ---------------------- Tab 6: Music Generation ----------------------
+with tab6:
+    st.header("🎵 Music Generation with Replicate's MusicGen")
+
+    if not replicate_api_key:
+        st.info("Please enter your Replicate API key in the sidebar to use this feature.")
+        st.stop()
+
+    # Initialize Replicate client
+    replicate_client = replicate.Client(api_token=replicate_api_key)
+
+    # Input fields for music generation
+    with st.form("music_generation_form"):
+        prompt = st.text_area("Enter your music prompt", "A triumphant and cinematic orchestral piece with a 9th harmonic resolution.")
+        version_id = st.selectbox("Select MusicGen Model Version", [
+            "stereo-large",  # Replace with actual Replicate MusicGen version IDs
+            "mono-medium",
+            "stereo-small"
+        ], index=0)
+        submit_button = st.form_submit_button(label="Generate Music")
+
+    if submit_button:
+        if not prompt.strip():
+            st.error("Prompt cannot be empty.")
+        else:
+            try:
+                with st.spinner("Generating music..."):
+                    # Create prediction
+                    prediction = replicate_client.predictions.create(
+                        model="meta/musicgen:latest",  # Replace with actual model identifier
+                        version=version_id,
+                        input={"prompt": prompt}
+                    )
+
+                    # Poll for prediction status
+                    st.info("Polling for music generation result...")
+                    while True:
+                        prediction = replicate_client.predictions.get(prediction.id)
+                        if prediction.status == "succeeded":
+                            break
+                        elif prediction.status == "failed":
+                            st.error("Music generation failed.")
+                            st.stop()
+                        time.sleep(10)  # Poll every 10 seconds
+
+                    # Download the generated music
+                    output_url = prediction.output
+                    response = requests.get(output_url)
+
+                    if response.status_code == 200:
+                        audio_data = response.content
+                        audio_filename = f"{FILES_DIR}/music_{int(time.time())}.mp3"
+                        with open(audio_filename, "wb") as f:
+                            f.write(audio_data)
+
+                        st.audio(audio_filename, format="audio/mp3")
+
+                        # Provide download option
+                        with open(audio_filename, "rb") as f:
+                            audio_bytes = f.read()
+                            audio_base64 = base64.b64encode(audio_bytes).decode()
+                            href = f'<a href="data:audio/mp3;base64,{audio_base64}" download="{os.path.basename(audio_filename)}">Download Music</a>'
+                            st.markdown(href, unsafe_allow_html=True)
+
+                        st.success("Music generation completed successfully!")
+                    else:
+                        st.error("Failed to download the generated music.")
+            except Exception as e:
+                st.error(f"An unexpected error occurred: {str(e)}")
+
+# ---------------------- Tab 7: Files ----------------------
+with st.tabs(["🎨 Image Generation", "🎥 Image-to-Video", "🎵 Music Generation"]):
+    with tab4:
+        pass  # Existing Image Generation tab
+    with tab5:
+        pass  # Existing Image-to-Video tab
+    with tab6:
+        pass  # Existing Music Generation tab
+
+with st.expander("View and Manage Generated Files"):
+    generated_files = os.listdir(FILES_DIR)
+    if generated_files:
+        for file in generated_files:
+            file_path = os.path.join(FILES_DIR, file)
+            file_extension = file.split('.')[-1].lower()
+            if file_extension in ["png", "jpeg", "jpg", "webp"]:
+                st.image(file_path, caption=file, use_column_width=True)
+            elif file_extension in ["mp4", "avi", "mov"]:
+                st.video(file_path)
+            elif file_extension in ["mp3", "wav", "ogg"]:
+                st.audio(file_path, format=f"audio/{file_extension}")
+            else:
+                st.write(f"**{file}**")
+
+            # Provide download option
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+                file_base64 = base64.b64encode(file_bytes).decode()
+                if file_extension in ["png", "jpeg", "jpg", "webp"]:
+                    mime = f"image/{file_extension}"
+                elif file_extension in ["mp4", "avi", "mov"]:
+                    mime = "video/mp4"
+                elif file_extension in ["mp3", "wav", "ogg"]:
+                    mime = "audio/mp3"
+                else:
+                    mime = "application/octet-stream"
+                href = f'<a href="data:{mime};base64,{file_base64}" download="{file}">Download {file}</a>'
+                st.markdown(href, unsafe_allow_html=True)
+    else:
+        st.info("No generated files available.")
+
+# ---------------------- Optional: Clear Files ----------------------
+with st.expander("Manage Files"):
+    if st.button("Clear All Files"):
+        try:
+            shutil.rmtree(FILES_DIR)
+            os.makedirs(FILES_DIR)
+            st.success("All generated files have been cleared.")
+        except Exception as e:
+            st.error(f"An error occurred while clearing files: {str(e)}")
