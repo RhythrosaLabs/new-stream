@@ -166,11 +166,11 @@ def generate_image(prompt: str) -> str:
     """
     if not stability_api_key:
         return "Stability AI API key not provided."
-    
+
     url = "https://api.stability.ai/v2beta/stable-image/generate/ultra"
     headers = {
         "authorization": f"Bearer {stability_api_key}",
-        "accept": "image/png"  # You can change to "image/jpeg" or "image/webp" as needed
+        "accept": "image/png"  # Options: "image/jpeg", "image/webp"
     }
     files = {
         "none": ''  # As per API documentation
