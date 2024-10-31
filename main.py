@@ -42,7 +42,7 @@ if prompt := st.chat_input("Type your command here..."):
     
     # Use GPT-4o-mini to analyze and determine the required action
     client = OpenAI(api_key=openai_api_key)
-    analysis_prompt = f"Analyze the following user request to determine the appropriate task. Determine if it's a general chat, a web search, or a file analysis request. Here is the request:\n\n'{prompt}'"
+    analysis_prompt = f"Analyze the following user request to determine the appropriate task. Determine if it's a general chat, a web search, file analysis, or image generation request. Here is the request:\n\n'{prompt}'"
     analysis_response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "system", "content": analysis_prompt}]
@@ -92,5 +92,21 @@ if prompt := st.chat_input("Type your command here..."):
             response = search_agent.run(st.session_state.messages, callbacks=[st_cb])
             st.session_state.messages.append({"role": "assistant", "content": response})
             st.write(response)
+    
+    # OpenAI DALL-E Image Generation
+    elif "image generation" in model_decision and openai_api_key:
+        try:
+            image_response = client.images.create(
+                prompt=prompt,
+                n=1,
+                size="1024x1024",
+            )
+            image_url = image_response['data'][0]['url']
+            st.image(image_url, caption="Generated Image")
+            st.session_state.messages.append({"role": "assistant", "content": f"Image generated based on: '{prompt}'"})
+        
+        except Exception as e:
+            st.error(f"An error occurred with image generation: {e}")
+
     else:
         st.write("### Unable to determine the action based on the prompt. Please ensure the request is clear.")
