@@ -1,10 +1,35 @@
+"""
+All-in-One Chat Assistant
+=========================
+
+A Streamlit web application that integrates OpenAI's GPT models, LangChain, and other AI tools
+to provide a versatile chat assistant capable of web searching, image generation, document analysis,
+and more.
+
+Features:
+- Chat with an AI assistant
+- Upload and analyze documents (PDF, TXT, MD)
+- Generate images based on prompts
+- Perform web searches
+- Retrieve answers from uploaded documents
+
+Dependencies:
+- streamlit
+- openai
+- langchain
+- faiss-cpu
+- duckduckgo-search
+- python-dotenv
+
+Author: Your Name
+Date: 2024-10-31
+"""
+
 import streamlit as st
 import openai
-import anthropic
 import os
 import tempfile
-import requests
-import base64
+from openai import OpenAI
 from langchain.agents import initialize_agent, Tool, AgentType
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.chat_models import ChatOpenAI
@@ -17,73 +42,35 @@ from langchain.embeddings import OpenAIEmbeddings
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import RetrievalQA
 from langchain.prompts import MessagesPlaceholder
-import logging
-
-# ============================
-# Logging Configuration
-# ============================
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # ============================
 # Configuration and Setup
 # ============================
 
-st.set_page_config(
-    page_title="All-in-One AI Assistant",
-    page_icon="🤖",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+# Set up Streamlit page configuration
+st.set_page_config(page_title="All-in-One Chat Assistant", page_icon="🤖", layout="wide")
 
 # Sidebar for API keys and file uploads
 with st.sidebar:
     st.header("🔑 API Keys & Uploads")
-    
-    # OpenAI API Key
-    openai_api_key = st.text_input(
-        "OpenAI API Key",
-        type="password",
-        help="Enter your OpenAI API key. [Get one here](https://platform.openai.com/account/api-keys)",
-    )
-    
-    # Anthropic API Key
-    anthropic_api_key = st.text_input(
-        "Anthropic API Key",
-        type="password",
-        help="Enter your Anthropic API key. [Get one here](https://www.anthropic.com/product/claude)",
-    )
-    
-    # Stability AI API Key
-    stability_api_key = st.text_input(
-        "Stability AI API Key",
-        type="password",
-        help="Enter your Stability AI API key. [Get one here](https://platform.stability.ai/account/api-keys)",
-    )
-    
+    openai_api_key = st.text_input("OpenAI API Key", type="password", help="Enter your OpenAI API key.")
+    st.markdown("[Get an OpenAI API key](https://platform.openai.com/account/api-keys)")
     st.markdown("---")
-    
-    # File Upload
-    uploaded_file = st.file_uploader("📄 Upload a document for Q&A", type=["pdf", "txt", "md"])
-    
+    uploaded_file = st.file_uploader("📄 Upload a document for Q&A", type=["txt", "pdf", "md"])
     st.markdown("---")
     st.markdown("### Additional Tools Coming Soon!")
 
-# Validate API Keys
+# Check for OpenAI API key
 if not openai_api_key:
     st.warning("Please enter your OpenAI API key to use the app.")
     st.stop()
-
-if not stability_api_key:
-    st.warning("Please enter your Stability AI API key to enable Image Generation.")
 
 # Set OpenAI API key
 os.environ["OPENAI_API_KEY"] = openai_api_key
 openai.api_key = openai_api_key
 
 # Initialize OpenAI client
-client = openai
+client = OpenAI(api_key=openai_api_key)
 
 # Initialize session state for messages and document processing
 if "messages" not in st.session_state:
@@ -123,6 +110,7 @@ if uploaded_file:
         st.success(st.session_state.document_content)
     except Exception as e:
         st.error(f"Error processing document: {e}")
+        st.stop()
     finally:
         # Delete the temporary file
         try:
@@ -144,69 +132,40 @@ search_tool = Tool(
 )
 tools.append(search_tool)
 
-# Image Generation Tool using Stability AI's Stable Image Ultra
+# Image Generation Tool
 def generate_image(prompt: str) -> str:
     """
-    Generates an image based on the provided prompt using Stability AI's Stable Image Ultra.
+    Generates an image based on the provided prompt using OpenAI's DALL-E model.
 
     Args:
         prompt (str): The text prompt to generate the image.
 
     Returns:
-        str: Data URL of the generated image or an error message.
+        str: URL of the generated image or an error message.
     """
-    if not stability_api_key:
-        return "Stability AI API key not provided."
-    
-    # API endpoint for Stable Image Ultra
-    url = "https://api.stability.ai/v2beta/stable-image/generate/ultra"
-    headers = {
-        "Authorization": f"Bearer {stability_api_key}",
-        "Content-Type": "application/json",
-    }
-    
-    # Prepare data payload as JSON
-    data = {
-        "prompt": prompt,
-        "output_format": "base64",  # Specified to return a base64-encoded image
-        "size": "1024x1024",        # Change as per user preference
-        "quality": "standard"       # Other options: "hd"
-    }
-    
     try:
-        response = requests.post(url, headers=headers, json=data)
-        
-        if response.status_code == 200:
-            # Successful response with base64 image data
-            response_json = response.json()
-            image_base64 = response_json.get("data", "")
-            
-            if image_base64:
-                # Returning data URL for display
-                data_url = f"data:image/png;base64,{image_base64}"
-                logger.info("Image generated successfully.")
-                return data_url
-            else:
-                return "Error: No image data received."
-        else:
-            error_message = response.json().get("error", "Unknown error.")
-            logger.error(f"Error generating image: {error_message}")
-            return f"Error generating image: {error_message}"
+        response = openai.Image.create(
+            prompt=prompt,
+            size="1024x1024",
+            n=1,
+            response_format="url"
+        )
+        image_url = response['data'][0]['url']
+        return image_url
     except Exception as e:
-        logger.exception("Exception occurred while generating image.")
         return f"Error generating image: {e}"
 
 image_generation_tool = Tool(
     name="image_generation",
     func=generate_image,
-    description="Generates an image based on the prompt using Stability AI's Stable Image Ultra. Use the command /image followed by your prompt."
+    description="Generates an image based on the prompt."
 )
 tools.append(image_generation_tool)
 
-# Document Q&A Tool using Anthropic
+# Document Q&A Tool
 def answer_question_about_document(question: str) -> str:
     """
-    Answers a question based on the uploaded document using Anthropic's Claude.
+    Answers a question based on the uploaded document using Retrieval QA.
 
     Args:
         question (str): The user's question.
@@ -216,19 +175,17 @@ def answer_question_about_document(question: str) -> str:
     """
     if st.session_state.vectorstore is None:
         return "No document has been uploaded. Please upload a document to use this feature."
-    
+    retriever = st.session_state.vectorstore.as_retriever()
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=ChatOpenAI(model_name="gpt-4", temperature=0),
+        chain_type="stuff",
+        retriever=retriever,
+        return_source_documents=False
+    )
     try:
-        retriever = st.session_state.vectorstore.as_retriever()
-        qa_chain = RetrievalQA.from_chain_type(
-            llm=ChatOpenAI(model_name="gpt-4", openai_api_key=openai_api_key),
-            chain_type="stuff",
-            retriever=retriever,
-            return_source_documents=False
-        )
         answer = qa_chain.run(question)
         return answer
     except Exception as e:
-        logger.exception("Exception occurred while answering question.")
         return f"Error answering question: {e}"
 
 document_qa_tool = Tool(
@@ -246,13 +203,13 @@ memory = ConversationBufferMemory(memory_key="chat_history", return_messages=Tru
 agent_kwargs = {
     "extra_prompt_messages": [MessagesPlaceholder(variable_name="chat_history")]
 }
+llm = ChatOpenAI(model_name="gpt-4", streaming=True)
 
-llm = ChatOpenAI(model_name="gpt-4", openai_api_key=openai_api_key, streaming=True)
 agent = initialize_agent(
-    tools,
-    llm,
+    tools=tools,
+    llm=llm,
     agent=AgentType.OPENAI_FUNCTIONS,
-    verbose=False,
+    verbose=True,
     memory=memory,
     agent_kwargs=agent_kwargs,
 )
@@ -261,9 +218,9 @@ agent = initialize_agent(
 # User Interface
 # ============================
 
-st.title("🤖 All-in-One AI Assistant")
-
 # Display chat messages from history on app rerun
+st.title("🤖 All-in-One Chat Assistant")
+
 for msg in st.session_state.messages:
     if isinstance(msg, HumanMessage):
         st.chat_message("user").write(msg.content)
@@ -272,52 +229,20 @@ for msg in st.session_state.messages:
 
 # Accept user input
 if prompt := st.chat_input("Type your message here..."):
-    if not openai_api_key:
-        st.info("Please add your OpenAI API key to continue.")
-        st.stop()
-
     # Add user message to session state
     st.session_state.messages.append(HumanMessage(content=prompt))
     st.chat_message("user").write(prompt)
 
-    # Check if the prompt is an image generation command
-    if prompt.strip().lower().startswith("/image"):
-        image_prompt = prompt.strip()[len("/image"):].strip()
-        if image_prompt:
-            with st.chat_message("assistant"):
-                st.spinner("Generating image...")
-                image_response = generate_image(image_prompt)
-                st.session_state.messages.append(AIMessage(content=image_response))
-                # Check if the response is a data URL for an image
-                if image_response.startswith("data:image"):
-                    try:
-                        header, encoded = image_response.split(",", 1)
-                        image_bytes = base64.b64decode(encoded)
-                        st.image(image_bytes, caption=image_prompt)
-                    except Exception as e:
-                        st.error(f"Error displaying image: {e}")
-                else:
-                    st.write(image_response)
+    # Run the agent and get the response
+    with st.chat_message("assistant"):
+        st_cb = StreamlitCallbackHandler(st.container())
+        try:
+            response = agent.run(input=prompt, callbacks=[st_cb])
+        except Exception as e:
+            response = f"An error occurred: {e}"
+        st.session_state.messages.append(AIMessage(content=response))
+        # Check if the response is an image URL
+        if response.startswith("http"):
+            st.image(response, caption=prompt)
         else:
-            with st.chat_message("assistant"):
-                st.write("Please provide a prompt after the /image command. Example: `/image a white siamese cat`")
-    else:
-        # Run the agent and get the response
-        with st.chat_message("assistant"):
-            with st.spinner("Generating response..."):
-                st_cb = StreamlitCallbackHandler(st.container())
-                try:
-                    response = agent.run(input=prompt, callbacks=[st_cb])
-                except Exception as e:
-                    response = f"An error occurred: {e}"
-            st.session_state.messages.append(AIMessage(content=response))
-            # Check if the response is a data URL for an image
-            if response.startswith("data:image"):
-                try:
-                    header, encoded = response.split(",", 1)
-                    image_bytes = base64.b64decode(encoded)
-                    st.image(image_bytes, caption="Generated Image")
-                except Exception as e:
-                    st.error(f"Error displaying image: {e}")
-            else:
-                st.write(response)
+            st.write(response)
