@@ -13,6 +13,10 @@ with st.sidebar:
     anthropic_api_key = st.text_input("Anthropic API Key", type="password")
     st.markdown("[Get OpenAI Key](https://platform.openai.com/account/api-keys)")
 
+# Set the OpenAI API key if provided
+if openai_api_key:
+    openai.api_key = openai_api_key
+
 # Initialize session state for messages
 if "messages" not in st.session_state:
     st.session_state["messages"] = [{"role": "assistant", "content": "Hello! How can I assist you?"}]
@@ -63,8 +67,7 @@ if st.button("Send") and user_input:
         image_response = openai.Image.create(
             prompt=user_input,
             n=1,
-            model="dall-e-3",
-            api_key=openai_api_key
+            model="dall-e-3"
         )
         image_url = image_response['data'][0]['url']
         response_content = f"![Generated Image]({image_url})"
@@ -93,8 +96,7 @@ if st.button("Send") and user_input:
             vision_prompt = "What is shown in this image?"
             vision_response = openai.ChatCompletion.create(
                 model="gpt-4-vision-preview",
-                messages=[{"role": "user", "content": vision_prompt}],
-                api_key=openai_api_key
+                messages=[{"role": "user", "content": vision_prompt}]
             )
             response_content = vision_response['choices'][0]['message']['content']
         else:
@@ -104,8 +106,7 @@ if st.button("Send") and user_input:
         tts_response = openai.TextToSpeech.create(
             text=user_input,
             voice="female",
-            model="tts-1-hd",
-            api_key=openai_api_key
+            model="tts-1-hd"
         )
         audio_url = tts_response['data'][0]['audio_url']
         response_content = f"[Generated Speech]({audio_url})"
@@ -113,10 +114,9 @@ if st.button("Send") and user_input:
     else:  # Default to OpenAI Chat
         chat_response = openai.ChatCompletion.create(
             model="gpt-4o",
-            messages=st.session_state["messages"],
-            api_key=openai_api_key
+            messages=st.session_state["messages"]
         )
-        response_content = chat_response.choices[0].message.content
+        response_content = chat_response['choices'][0]['message']['content']
 
     # Append assistant's response to the session state
     st.session_state["messages"].append({"role": "assistant", "content": response_content})
