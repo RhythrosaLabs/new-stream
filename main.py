@@ -1,13 +1,14 @@
 import streamlit as st
 import openai
 import os
+import tempfile
 from openai import OpenAI
 from langchain.agents import initialize_agent, Tool, AgentType
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.chat_models import ChatOpenAI
 from langchain.tools import DuckDuckGoSearchRun
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
-from langchain.document_loaders import UnstructuredFileLoader
+from langchain.document_loaders import UnstructuredFileLoader, PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain.embeddings import OpenAIEmbeddings
@@ -49,8 +50,19 @@ if "vectorstore" not in st.session_state:
 # If a document is uploaded, process it
 if uploaded_file:
     try:
-        loader = UnstructuredFileLoader(uploaded_file)
+        # Save uploaded file to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=uploaded_file.name) as tmp_file:
+            tmp_file.write(uploaded_file.getvalue())
+            tmp_file_path = tmp_file.name
+
+        # Choose the appropriate loader based on file type
+        if uploaded_file.name.endswith('.pdf'):
+            loader = PyPDFLoader(tmp_file_path)
+        else:
+            loader = UnstructuredFileLoader(tmp_file_path)
         documents = loader.load()
+
+        # Split documents and create embeddings
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         docs = text_splitter.split_documents(documents)
         embeddings = OpenAIEmbeddings()
@@ -60,6 +72,9 @@ if uploaded_file:
     except Exception as e:
         st.error(f"Error processing document: {e}")
         st.stop()
+    finally:
+        # Delete the temporary file
+        os.unlink(tmp_file_path)
 
 # Define tools for the agent
 tools = []
