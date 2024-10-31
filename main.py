@@ -8,38 +8,35 @@ from PIL import Image
 import io
 import base64
 
-# Custom CSS to keep input area fixed at the bottom of the chat tab
+# Custom CSS for a ChatGPT-like layout
 st.markdown("""
     <style>
-        /* Chat container with scrollable messages */
+        /* Container to hold chat messages and make it scrollable */
         .chat-container {
             height: 70vh;
             overflow-y: auto;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 5px;
+            margin-bottom: 90px; /* Space for fixed input area */
         }
         /* Fixed input area at the bottom */
         .fixed-input {
             position: fixed;
             bottom: 0;
+            left: 0;
             width: 100%;
             max-width: 800px;
             padding: 10px;
             background-color: white;
             border-top: 1px solid #ddd;
-            box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
             display: flex;
-            justify-content: space-between;
             align-items: center;
             z-index: 1000;
         }
-        .stTabs [data-testid="stVerticalBlock"] {
-            padding-bottom: 60px; /* Extra space for fixed input area */
-        }
-        .chat-input {
-            flex: 1;
-            margin-right: 10px;
+        /* Adjust main content to avoid overlap with the fixed input */
+        .main-content {
+            padding-bottom: 90px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -72,7 +69,7 @@ with tab1:
             st.chat_message(msg["role"]).write(msg["content"])
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Fixed input area for file upload and text input
+    # Fixed input area for file upload and text input at the bottom of the page
     st.markdown('<div class="fixed-input">', unsafe_allow_html=True)
     uploaded_file = st.file_uploader("Attach file", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], label_visibility="collapsed")
     prompt = st.text_input("Type your command here...", key="chat_input", label_visibility="collapsed")
