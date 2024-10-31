@@ -1,11 +1,12 @@
 """
 All-in-One AI Assistant
-=======================
+========================
+
 Integrates:
 - OpenAI's GPT models for general chat.
 - Anthropic's Claude for File Q&A.
 - LangChain for Web Search.
-- OpenAI's DALL·E 3 for Image Generation.
+- Stability AI's Stable Image Ultra for Image Generation.
 
 Features:
 - Single chat interface to interact with all functionalities.
@@ -22,6 +23,8 @@ import openai
 import anthropic
 import os
 import tempfile
+import requests
+import base64
 from langchain.agents import initialize_agent, Tool, AgentType
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.chat_models import ChatOpenAI
@@ -62,6 +65,13 @@ with st.sidebar:
         "Anthropic API Key",
         type="password",
         help="Enter your Anthropic API key. [Get one here](https://www.anthropic.com/product/claude)",
+    )
+    
+    # Stability AI API Key
+    stability_api_key = st.text_input(
+        "Stability AI API Key",
+        type="password",
+        help="Enter your Stability AI API key. [Get one here](https://platform.stability.ai/account/api-keys)",
     )
     
     st.markdown("---")
@@ -143,35 +153,58 @@ search_tool = Tool(
 )
 tools.append(search_tool)
 
-# Image Generation Tool
+# Image Generation Tool using Stability AI's Stable Image Ultra
 def generate_image(prompt: str) -> str:
     """
-    Generates an image based on the provided prompt using OpenAI's DALL·E 3 model.
+    Generates an image based on the provided prompt using Stability AI's Stable Image Ultra.
 
     Args:
         prompt (str): The text prompt to generate the image.
 
     Returns:
-        str: URL of the generated image or an error message.
+        str: Data URL of the generated image or an error message.
     """
+    if not stability_api_key:
+        return "Stability AI API key not provided."
+    
+    url = "https://api.stability.ai/v2beta/stable-image/generate/ultra"
+    headers = {
+        "authorization": f"Bearer {stability_api_key}",
+        "accept": "image/png"  # You can change to "image/jpeg" or "image/webp" as needed
+    }
+    files = {
+        "none": ''  # As per API documentation
+    }
+    data = {
+        "prompt": prompt,
+        "output_format": "png",  # Options: "jpeg", "png", "webp"
+        "size": "1024x1024",     # Options: "1024x1024", "1024x1792", "1792x1024"
+        "quality": "standard"    # Options: "standard", "hd"
+    }
+    
     try:
-        response = openai.Image.create(
-            model="dall-e-3",
-            prompt=prompt,
-            size="1024x1024",
-            n=1,
-            response_format="url",
-            quality="standard"  # Options: "standard", "hd"
+        response = requests.post(
+            url,
+            headers=headers,
+            files=files,
+            data=data
         )
-        image_url = response['data'][0]['url']
-        return image_url
+        
+        if response.status_code == 200:
+            image_bytes = response.content
+            encoded_image = base64.b64encode(image_bytes).decode()
+            data_url = f"data:image/png;base64,{encoded_image}"
+            return data_url
+        else:
+            error_message = response.json().get('error', 'Unknown error occurred.')
+            return f"Error generating image: {error_message}"
     except Exception as e:
         return f"Error generating image: {e}"
 
 image_generation_tool = Tool(
     name="image_generation",
     func=generate_image,
-    description="Generates an image based on the prompt."
+    description="Generates an image based on the prompt using Stability AI's Stable Image Ultra."
 )
 tools.append(image_generation_tool)
 
@@ -256,8 +289,11 @@ if prompt := st.chat_input("Type your message here..."):
         except Exception as e:
             response = f"An error occurred: {e}"
         st.session_state.messages.append(AIMessage(content=response))
-        # Check if the response is an image URL
-        if response.startswith("http"):
-            st.image(response, caption=prompt)
+        # Check if the response is a data URL for an image
+        if response.startswith("data:image"):
+            # Extract the base64 part and decode it
+            header, encoded = response.split(",", 1)
+            image_bytes = base64.b64decode(encoded)
+            st.image(image_bytes, caption="Generated Image")
         else:
             st.write(response)
