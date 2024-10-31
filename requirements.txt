@@ -10,3 +10,4 @@ replicate
 stability-sdk
 PyPDF2
 python-docx
+faiss-cpu
