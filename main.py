@@ -8,28 +8,28 @@ from PIL import Image
 import io
 import base64
 
-# Custom CSS to fix the input area at the bottom of the chat tab
+# Custom CSS to fix the input area at the bottom of the page
 st.markdown("""
     <style>
-        /* Fix the input area at the bottom of the chat tab */
-        .chat-tab {
-            display: flex;
-            flex-direction: column;
-            height: 80vh;
-        }
-        .chat-messages {
-            flex: 1;
+        /* Set up a fixed height for the chat container */
+        .chat-container {
+            height: 70vh;
             overflow-y: auto;
-            padding-bottom: 60px; /* Space for input area */
+            padding-bottom: 100px; /* space for the fixed input area */
         }
-        .input-area {
-            position: sticky;
+        /* Fix the input area at the bottom of the page */
+        .fixed-input {
+            position: fixed;
             bottom: 0;
+            left: 0;
+            width: 100%;
             background-color: white;
             padding: 10px;
             box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
             display: flex;
+            justify-content: center;
             align-items: center;
+            z-index: 1000;
         }
         .chat-input {
             flex: 1;
@@ -55,11 +55,10 @@ if "files" not in st.session_state:
 tab1, tab2 = st.tabs(["Chat", "File Management"])
 
 with tab1:
-    st.markdown('<div class="chat-tab">', unsafe_allow_html=True)
     st.write("Interact with AI models for general chat, file analysis, web search, and image generation.")
 
-    # Display chat messages
-    st.markdown('<div class="chat-messages">', unsafe_allow_html=True)
+    # Chat message container
+    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
     for msg in st.session_state["messages"]:
         if msg.get("image"):
             st.image(msg["image"], caption=msg["content"])
@@ -67,8 +66,8 @@ with tab1:
             st.chat_message(msg["role"]).write(msg["content"])
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Input area at the bottom of the chat tab
-    st.markdown('<div class="input-area">', unsafe_allow_html=True)
+    # Fixed input area for file upload and text input
+    st.markdown('<div class="fixed-input">', unsafe_allow_html=True)
     uploaded_file = st.file_uploader("Attach file", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], label_visibility="collapsed")
     prompt = st.text_input("Type your command here...", key="chat_input", label_visibility="collapsed")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -79,7 +78,6 @@ with tab1:
         st.session_state["files"][uploaded_file.name] = file_content
         st.success(f"File '{uploaded_file.name}' uploaded successfully.")
 
-    # Process prompt if entered
     if prompt:
         st.session_state["messages"].append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
