@@ -1,8 +1,7 @@
 # tools.py
 
 import openai
-from langchain.tools import Tool
-from langchain.utilities import DuckDuckGoSearchRun
+from langchain.tools import Tool, DuckDuckGoSearchRun
 from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
 
