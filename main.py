@@ -1,15 +1,17 @@
 import streamlit as st
 import openai
 import os
+import tempfile
+from openai import OpenAI
 from langchain.agents import initialize_agent, Tool, AgentType
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.chat_models import ChatOpenAI
 from langchain.tools import DuckDuckGoSearchRun
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
-from langchain.document_loaders import TextLoader
+from langchain.document_loaders import UnstructuredFileLoader, PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
-from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.embeddings import OpenAIEmbeddings
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import RetrievalQA
 from langchain.prompts import MessagesPlaceholder
@@ -33,6 +35,7 @@ if not openai_api_key:
 # Set OpenAI API key
 os.environ["OPENAI_API_KEY"] = openai_api_key
 openai.api_key = openai_api_key
+client = OpenAI(api_key=openai_api_key)
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -46,19 +49,32 @@ if "vectorstore" not in st.session_state:
 
 # If a document is uploaded, process it
 if uploaded_file:
-    file_extension = uploaded_file.name.split(".")[-1]
-    if file_extension == "pdf":
-        from langchain.document_loaders import PyPDFLoader
-        loader = PyPDFLoader(uploaded_file)
-    else:
-        loader = TextLoader(uploaded_file)
-    documents = loader.load()
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    docs = text_splitter.split_documents(documents)
-    embeddings = OpenAIEmbeddings()
-    vectorstore = FAISS.from_documents(docs, embeddings)
-    st.session_state.vectorstore = vectorstore
-    st.session_state.document_content = "Document uploaded and processed successfully."
+    try:
+        # Save uploaded file to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=uploaded_file.name) as tmp_file:
+            tmp_file.write(uploaded_file.getvalue())
+            tmp_file_path = tmp_file.name
+
+        # Choose the appropriate loader based on file type
+        if uploaded_file.name.endswith('.pdf'):
+            loader = PyPDFLoader(tmp_file_path)
+        else:
+            loader = UnstructuredFileLoader(tmp_file_path)
+        documents = loader.load()
+
+        # Split documents and create embeddings
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        docs = text_splitter.split_documents(documents)
+        embeddings = OpenAIEmbeddings()
+        vectorstore = FAISS.from_documents(docs, embeddings)
+        st.session_state.vectorstore = vectorstore
+        st.session_state.document_content = "Document uploaded and processed successfully."
+    except Exception as e:
+        st.error(f"Error processing document: {e}")
+        st.stop()
+    finally:
+        # Delete the temporary file
+        os.unlink(tmp_file_path)
 
 # Define tools for the agent
 tools = []
@@ -73,14 +89,18 @@ tools.append(search_tool)
 
 # Image Generation Tool
 def generate_image(prompt):
-    response = openai.Image.create(
-        prompt=prompt,
-        n=1,
-        size="1024x1024",
-        model="dall-e-3"
-    )
-    image_url = response['data'][0]['url']
-    return image_url
+    try:
+        response = client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            size="1024x1024",
+            quality="standard",
+            n=1,
+        )
+        image_url = response.data[0].url
+        return image_url
+    except Exception as e:
+        return f"Error generating image: {e}"
 
 image_generation_tool = Tool(
     name="image_generation",
@@ -147,8 +167,8 @@ if prompt := st.chat_input("Type your message here..."):
         except Exception as e:
             response = f"An error occurred: {e}"
         st.session_state.messages.append(AIMessage(content=response))
-        st.write(response)
-
-        # If the response contains an image URL, display the image
-        if "http" in response and ("png" in response or "jpg" in response or "jpeg" in response):
-            st.image(response)
+        # Check if the response is an image URL
+        if response.startswith("http"):
+            st.image(response, caption=prompt)
+        else:
+            st.write(response)
