@@ -1,119 +1,194 @@
 import streamlit as st
+from openai import OpenAI
 import anthropic
-import openai
 from langchain.agents import initialize_agent, AgentType
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.chat_models import ChatOpenAI
 from langchain.tools import DuckDuckGoSearchRun
-from PIL import Image
-import io
+import os
+import uuid
 
 # Set page configuration
-st.set_page_config(layout="wide")
+st.set_page_config(
+    page_title="Unified Chat Interface",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-# Sidebar: API key inputs and model selections
+# Initialize session state for messages and file management
+if "messages" not in st.session_state:
+    st.session_state["messages"] = [{"role": "assistant", "content": "Hello! I can help you with chatting, file analysis, and web searches. How can I assist you today?"}]
+if "files" not in st.session_state:
+    st.session_state["files"] = {}  # Dictionary to store files with unique IDs
+
+# Sidebar for API keys and links
 with st.sidebar:
-    anthropic_api_key = st.text_input("Anthropic API Key", key="file_qa_api_key", type="password")
-    openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password")
+    st.header("🔑 API Keys")
+    openai_api_key = st.text_input("OpenAI API Key", type="password", key="openai_api_key")
+    anthropic_api_key = st.text_input("Anthropic API Key", type="password", key="anthropic_api_key")
+    st.markdown("---")
     st.markdown("[Get an OpenAI API key](https://platform.openai.com/account/api-keys)")
-    st.markdown("[View the source code](https://github.com/streamlit/llm-examples)")
-    st.markdown("[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/streamlit/llm-examples?quickstart=1)")
+    st.markdown("[Get an Anthropic API key](https://www.anthropic.com/product/claude)")
+    st.markdown("[View the source code](https://github.com/your-repo/your-app)")
+    st.markdown("[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://github.com/codespaces/new)")
 
-# Main tabs: Command Line Chat, Files
-st.title("🔧 Integrated Chat Interface")
-tab1, tab2 = st.tabs(["💬 Command Line Chat", "📂 Files"])
+# Main layout with two columns: File Management and Chat Interface
+col1, col2 = st.columns([1, 3])
 
-with tab1:
-    # Command Line Chat: Unified chat, file analysis, generation, and web search
-    if "messages" not in st.session_state:
-        st.session_state["messages"] = [
-            {"role": "assistant", "content": "Hello! I can chat, analyze files, generate files, and search the web. How can I assist you?"}
-        ]
+# File Management Section
+with col1:
+    st.header("📂 File Management")
+    
+    # File uploader
+    uploaded_files = st.file_uploader("Upload Files", type=["txt", "md", "py", "json", "csv"], accept_multiple_files=True)
+    if uploaded_files:
+        for uploaded_file in uploaded_files:
+            file_id = str(uuid.uuid4())
+            st.session_state["files"][file_id] = {
+                "name": uploaded_file.name,
+                "content": uploaded_file.read(),
+                "type": uploaded_file.type
+            }
+        st.success("Files uploaded successfully!")
 
-    chat_container = st.container()
-    user_input = st.text_input("Enter your message here:", key="user_input", help="Type your message here.")
-
-    # Display chat history
-    with chat_container:
-        for msg in st.session_state.messages:
-            role_icon = "🤖 Assistant" if msg["role"] == "assistant" else "🧑 User"
-            st.markdown(f"**{role_icon}:** {msg['content']}")
-
-    # Send button to process input
-    if st.button("Send") and user_input:
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        
-        if not openai_api_key and not anthropic_api_key:
-            st.info("Please add your API keys to continue.")
-        else:
-            # Analyze text-based input to decide which action to take
-            if "analyze" in user_input.lower() and anthropic_api_key:
-                # File analysis using Anthropic
-                uploaded_file = st.file_uploader("Upload a file to analyze", type=("txt", "md", "pdf"))
-                if uploaded_file:
-                    article = uploaded_file.read().decode()
-                    file_prompt = f"{anthropic.HUMAN_PROMPT} Here's a file:\n\n{article}\n\n{user_input}{anthropic.AI_PROMPT}"
-                    client = anthropic.Client(api_key=anthropic_api_key)
-                    response = client.completions.create(
-                        prompt=file_prompt,
-                        stop_sequences=[anthropic.HUMAN_PROMPT],
-                        model="claude-v1",
-                        max_tokens_to_sample=100,
+    # Display list of files
+    if st.session_state["files"]:
+        st.subheader("Your Files")
+        for file_id, file_info in st.session_state["files"].items():
+            col_file, col_actions = st.columns([3, 1])
+            with col_file:
+                st.markdown(f"**{file_info['name']}**")
+            with col_actions:
+                btn_download = st.button("Download", key=f"download_{file_id}")
+                btn_delete = st.button("Delete", key=f"delete_{file_id}")
+                if btn_download:
+                    st.download_button(
+                        label="Download",
+                        data=file_info["content"],
+                        file_name=file_info["name"],
+                        mime=file_info["type"],
                     )
-                    msg = response.completion
-                    st.session_state.messages.append({"role": "assistant", "content": msg})
+                if btn_delete:
+                    del st.session_state["files"][file_id]
+                    st.success(f"Deleted {file_info['name']}")
+    
+    st.markdown("---")
+    st.subheader("Generated Code Files")
+    # Display generated code files
+    for file_id, file_info in st.session_state["files"].items():
+        if file_info["type"] in ["text/plain", "application/json", "application/python"]:
+            col_file, col_actions = st.columns([3, 1])
+            with col_file:
+                st.markdown(f"**{file_info['name']}**")
+            with col_actions:
+                btn_download = st.button("Download", key=f"download_gen_{file_id}")
+                btn_delete = st.button("Delete", key=f"delete_gen_{file_id}")
+                if btn_download:
+                    st.download_button(
+                        label="Download",
+                        data=file_info["content"],
+                        file_name=file_info["name"],
+                        mime=file_info["type"],
+                    )
+                if btn_delete:
+                    del st.session_state["files"][file_id]
+                    st.success(f"Deleted {file_info['name']}")
 
-            elif "search" in user_input.lower() and openai_api_key:
-                # Web search using LangChain and DuckDuckGo
-                llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=openai_api_key, streaming=True)
-                search = DuckDuckGoSearchRun(name="Search")
-                search_agent = initialize_agent([search], llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, handle_parsing_errors=True)
-                response = search_agent.run(st.session_state.messages)
-                st.session_state.messages.append({"role": "assistant", "content": response})
-
-            elif "analyze image" in user_input.lower() and openai_api_key:
-                # Image analysis using OpenAI (if such functionality exists)
-                uploaded_image = st.file_uploader("Upload an image to analyze", type=["jpg", "png"])
-                if uploaded_image:
-                    image = Image.open(uploaded_image)
-                    img_bytes = io.BytesIO()
-                    image.save(img_bytes, format='PNG')
-                    img_data = img_bytes.getvalue()
-                    # Placeholder for image analysis
-                    st.session_state.messages.append({"role": "assistant", "content": "Image analysis completed."})
-
-            elif openai_api_key:
-                # General chat using OpenAI
-                response = openai.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant."},
-                        *st.session_state.messages,
-                    ]
-                )
-                msg = response['choices'][0]['message']['content']
-                st.session_state.messages.append({"role": "assistant", "content": msg})
-
-            st.experimental_rerun()
-
-with tab2:
-    # Files tab: Uploaded and created files
-    st.header("📂 Uploaded and Created Files")
-    uploaded_file = st.file_uploader("Upload files for analysis or storage", type=("txt", "md", "pdf", "jpg", "png"))
-    if uploaded_file:
-        st.write(f"Uploaded file: {uploaded_file.name}")
-        # Automatically analyze uploaded files and add to knowledge base
-        if "generated_files" not in st.session_state:
-            st.session_state["generated_files"] = []
-        st.session_state["generated_files"].append(uploaded_file.name)
-
-        if uploaded_file.type.startswith("image/"):
-            image = Image.open(uploaded_file)
-            st.image(image, caption=f"Uploaded image: {uploaded_file.name}")
+# Chat Interface Section
+with col2:
+    st.header("💬 Unified Chatbot Interface")
+    
+    # Display chat messages
+    for msg in st.session_state.messages:
+        if msg["role"] == "assistant":
+            st.chat_message("assistant").write(msg["content"])
         else:
-            content = uploaded_file.read().decode()
-            st.write(content)
-
-    # Displaying files that were created/generated during the chat
-    for file in st.session_state.get("generated_files", []):
-        st.write(file)
+            st.chat_message("user").write(msg["content"])
+    
+    # Chat input
+    prompt = st.chat_input(placeholder="Type your message here...")
+    if prompt:
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.chat_message("user").write(prompt)
+        
+        # Determine the type of request based on user input
+        # For simplicity, using keywords to determine functionality
+        if any(keyword in prompt.lower() for keyword in ["summary", "analyze", "file", "document"]):
+            # Handle File Q&A with Anthropic
+            if not anthropic_api_key:
+                st.info("Please add your Anthropic API key to continue.")
+            else:
+                # Check if a file is uploaded
+                if st.session_state["files"]:
+                    # For simplicity, take the first uploaded file
+                    file_id, file_info = next(iter(st.session_state["files"].items()))
+                    article = file_info["content"].decode()
+                    anthropic_client = anthropic.Client(api_key=anthropic_api_key)
+                    anthropic_prompt = f"""{anthropic.HUMAN_PROMPT} Here's an article:\n\n{article}\n\n\n\n{prompt}{anthropic.AI_PROMPT}"""
+                    try:
+                        response = anthropic_client.completions.create(
+                            prompt=anthropic_prompt,
+                            stop_sequences=[anthropic.HUMAN_PROMPT],
+                            model="claude-v1",
+                            max_tokens_to_sample=300,
+                        )
+                        answer = response.completion.strip()
+                        st.session_state.messages.append({"role": "assistant", "content": answer})
+                        st.chat_message("assistant").write(answer)
+                    except Exception as e:
+                        st.session_state.messages.append({"role": "assistant", "content": f"Error: {str(e)}"})
+                        st.chat_message("assistant").write(f"Error: {str(e)}")
+                else:
+                    st.session_state.messages.append({"role": "assistant", "content": "Please upload a file first to analyze."})
+                    st.chat_message("assistant").write("Please upload a file first to analyze.")
+        elif any(keyword in prompt.lower() for keyword in ["search", "find", "web"]):
+            # Handle Web Search with LangChain
+            if not openai_api_key:
+                st.info("Please add your OpenAI API key to continue.")
+            else:
+                try:
+                    llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=openai_api_key, streaming=True)
+                    search = DuckDuckGoSearchRun(name="Search")
+                    search_agent = initialize_agent(
+                        [search],
+                        llm,
+                        agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+                        handle_parsing_errors=True
+                    )
+                    with st.chat_message("assistant"):
+                        st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
+                        response = search_agent.run(prompt, callbacks=[st_cb])
+                        st.session_state.messages.append({"role": "assistant", "content": response})
+                        st.write(response)
+                except Exception as e:
+                    st.session_state.messages.append({"role": "assistant", "content": f"Error: {str(e)}"})
+                    st.chat_message("assistant").write(f"Error: {str(e)}")
+        else:
+            # Handle regular chat with OpenAI
+            if not openai_api_key:
+                st.info("Please add your OpenAI API key to continue.")
+            else:
+                try:
+                    openai_client = OpenAI(api_key=openai_api_key)
+                    response = openai_client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=st.session_state["messages"]
+                    )
+                    msg = response.choices[0].message.content
+                    st.session_state.messages.append({"role": "assistant", "content": msg})
+                    st.chat_message("assistant").write(msg)
+                    
+                    # If the assistant provides code, save it to file management
+                    if "```" in msg:
+                        code = msg.split("```")[1]
+                        code_language = msg.split("```")[0].split()[-1] if "```" in msg else "py"
+                        filename = f"generated_code_{uuid.uuid4().hex[:8]}.{code_language}"
+                        st.session_state["files"][str(uuid.uuid4())] = {
+                            "name": filename,
+                            "content": code.encode(),
+                            "type": f"application/{code_language}"
+                        }
+                        st.success(f"Generated code saved as {filename}")
+                except Exception as e:
+                    st.session_state.messages.append({"role": "assistant", "content": f"Error: {str(e)}"})
+                    st.chat_message("assistant").write(f"Error: {str(e)}")
