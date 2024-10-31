@@ -35,9 +35,8 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # GitHub Links
-    st.markdown("[View Source Code on GitHub](https://github.com/your-repo)")
-    st.markdown("[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://github.com/codespaces/new)")
+    # GitHub Links (Removed as per request)
+    # Removed the "View in Codespaces" and "View on GitHub" links
 
 # Main Application
 st.title("💬 Unified Chatbot Application")
@@ -47,9 +46,12 @@ st.header("📄 Upload a File for Analysis")
 uploaded_file = st.file_uploader("Upload a text or markdown file", type=["txt", "md"])
 
 if uploaded_file:
-    file_content = uploaded_file.read().decode("utf-8")
-    st.session_state["uploaded_file_content"] = file_content
-    st.success(f"Uploaded `{uploaded_file.name}` successfully!")
+    try:
+        file_content = uploaded_file.read().decode("utf-8")
+        st.session_state["uploaded_file_content"] = file_content
+        st.success(f"Uploaded `{uploaded_file.name}` successfully!")
+    except Exception as e:
+        st.error(f"❌ Failed to read the uploaded file: {e}")
 
 # Display Chat Messages
 st.header("💬 Conversation")
@@ -134,5 +136,8 @@ if st.button("Send") and prompt:
     # Append assistant's response to messages
     st.session_state["messages"].append({"role": "assistant", "content": response})
 
-    # Clear the input field
-    st.experimental_rerun()
+    # Optionally, scroll to the latest message or handle UI updates here
+    # Removed st.experimental_rerun() to prevent AttributeError
+
+    # Clear the input field by resetting the key (alternative approach)
+    st.session_state["chat_input"] = ""
