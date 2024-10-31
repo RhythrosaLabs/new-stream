@@ -1,10 +1,10 @@
 import streamlit as st
 from openai import OpenAI
 import anthropic
-from langchain.agents import initialize_agent, AgentType
-from langchain.callbacks import StreamlitCallbackHandler
-from langchain.chat_models import ChatOpenAI
-from langchain.tools import DuckDuckGoSearchRun
+from langchain_community.agents import initialize_agent, AgentType
+from langchain_community.callbacks import StreamlitCallbackHandler
+from langchain_openai import ChatOpenAI
+from langchain_community.tools import DuckDuckGoSearchRun
 
 # Page config and title
 st.set_page_config(page_title="AI Assistant Hub", layout="wide")
@@ -39,17 +39,20 @@ with tab1:
             st.info("Please add your OpenAI API key to continue.")
             st.stop()
             
-        client = OpenAI(api_key=openai_api_key)
-        st.session_state.messages.append({"role": "user", "content": chat_prompt})
-        st.chat_message("user").write(chat_prompt)
-        
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=st.session_state.messages
-        )
-        msg = response.choices[0].message.content
-        st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("assistant").write(msg)
+        try:
+            client = OpenAI(api_key=openai_api_key)
+            st.session_state.messages.append({"role": "user", "content": chat_prompt})
+            st.chat_message("user").write(chat_prompt)
+            
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=st.session_state.messages
+            )
+            msg = response.choices[0].message.content
+            st.session_state.messages.append({"role": "assistant", "content": msg})
+            st.chat_message("assistant").write(msg)
+        except Exception as e:
+            st.error(f"An error occurred: {str(e)}")
 
 # Tab 2: File Q&A with Claude
 with tab2:
@@ -65,20 +68,23 @@ with tab2:
             st.info("Please add your Anthropic API key to continue.")
             st.stop()
             
-        article = uploaded_file.read().decode()
-        prompt = f"""{anthropic.HUMAN_PROMPT} Here's an article:\n\n
-        {article}\n\n\n\n{question}{anthropic.AI_PROMPT}"""
-        
-        client = anthropic.Client(api_key=anthropic_api_key)
-        response = client.completions.create(
-            prompt=prompt,
-            stop_sequences=[anthropic.HUMAN_PROMPT],
-            model="claude-3-sonnet-20240229",
-            max_tokens_to_sample=1000,
-        )
-        
-        st.write("### Answer")
-        st.write(response.completion)
+        try:
+            article = uploaded_file.read().decode()
+            prompt = f"""{anthropic.HUMAN_PROMPT} Here's an article:\n\n
+            {article}\n\n\n\n{question}{anthropic.AI_PROMPT}"""
+            
+            client = anthropic.Client(api_key=anthropic_api_key)
+            response = client.completions.create(
+                prompt=prompt,
+                stop_sequences=[anthropic.HUMAN_PROMPT],
+                model="claude-3-sonnet-20240229",
+                max_tokens_to_sample=1000,
+            )
+            
+            st.write("### Answer")
+            st.write(response.completion)
+        except Exception as e:
+            st.error(f"An error occurred: {str(e)}")
 
 # Tab 3: Web Search with LangChain
 with tab3:
@@ -92,20 +98,23 @@ with tab3:
             st.info("Please add your OpenAI API key to continue.")
             st.stop()
             
-        llm = ChatOpenAI(
-            model_name="gpt-3.5-turbo",
-            openai_api_key=openai_api_key,
-            streaming=True
-        )
-        search = DuckDuckGoSearchRun(name="Search")
-        search_agent = initialize_agent(
-            [search],
-            llm,
-            agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-            handle_parsing_errors=True
-        )
-        
-        with st.chat_message("assistant"):
-            st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
-            response = search_agent.run(search_prompt, callbacks=[st_cb])
-            st.write(response)
+        try:
+            llm = ChatOpenAI(
+                model_name="gpt-3.5-turbo",
+                openai_api_key=openai_api_key,
+                streaming=True
+            )
+            search = DuckDuckGoSearchRun(name="Search")
+            search_agent = initialize_agent(
+                [search],
+                llm,
+                agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+                handle_parsing_errors=True
+            )
+            
+            with st.chat_message("assistant"):
+                st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
+                response = search_agent.run(search_prompt, callbacks=[st_cb])
+                st.write(response)
+        except Exception as e:
+            st.error(f"An error occurred: {str(e)}")
