@@ -8,6 +8,9 @@ from langchain.tools import DuckDuckGoSearchRun
 from PIL import Image
 import io
 
+# Set page configuration
+st.set_page_config(layout="wide")
+
 # Sidebar: API key inputs and model selections
 with st.sidebar:
     anthropic_api_key = st.text_input("Anthropic API Key", key="file_qa_api_key", type="password")
@@ -17,7 +20,6 @@ with st.sidebar:
     "[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/streamlit/llm-examples?quickstart=1)"
 
 # Main tabs: Command Line Chat, Files, API Settings
-st.set_page_config(layout="wide")
 st.title("🔧 Integrated Chat Interface")
 tab1, tab2 = st.tabs(["💬 Command Line Chat", "📂 Files"])
 
