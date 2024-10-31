@@ -20,7 +20,8 @@ def process_uploaded_file(uploaded_file, openai_api_key):
 
     try:
         # Save uploaded file to a temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
+        suffix = f".{uploaded_file.name.split('.')[-1]}"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
             tmp_file.write(uploaded_file.getvalue())
             tmp_file_path = tmp_file.name
 
