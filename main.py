@@ -1,18 +1,20 @@
 import streamlit as st
 import openai
 import os
+import tempfile
 from langchain.agents import initialize_agent, Tool, AgentType
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.chat_models import ChatOpenAI
 from langchain.tools import DuckDuckGoSearchRun
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
-from langchain.document_loaders import TextLoader
+from langchain.document_loaders import UnstructuredFileLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
-from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.embeddings import OpenAIEmbeddings
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import RetrievalQA
 from langchain.prompts import MessagesPlaceholder
+from langchain.docstore.document import Document
 
 # Set up Streamlit page configuration
 st.set_page_config(page_title="All-in-One Chat Assistant", page_icon="🤖")
@@ -46,13 +48,21 @@ if "vectorstore" not in st.session_state:
 
 # If a document is uploaded, process it
 if uploaded_file:
-    file_extension = uploaded_file.name.split(".")[-1]
+    file_extension = uploaded_file.name.split(".")[-1].lower()
     if file_extension == "pdf":
         from langchain.document_loaders import PyPDFLoader
-        loader = PyPDFLoader(uploaded_file)
+        # Save the uploaded PDF to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+            tmp_file.write(uploaded_file.read())
+            tmp_file_path = tmp_file.name
+        loader = PyPDFLoader(tmp_file_path)
+        documents = loader.load()
+        os.unlink(tmp_file_path)  # Delete the temporary file
     else:
-        loader = TextLoader(uploaded_file)
-    documents = loader.load()
+        # For txt and md files
+        content = uploaded_file.read().decode('utf-8')
+        documents = [Document(page_content=content, metadata={"source": uploaded_file.name})]
+
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     docs = text_splitter.split_documents(documents)
     embeddings = OpenAIEmbeddings()
@@ -76,8 +86,7 @@ def generate_image(prompt):
     response = openai.Image.create(
         prompt=prompt,
         n=1,
-        size="1024x1024",
-        model="dall-e-3"
+        size="1024x1024"
     )
     image_url = response['data'][0]['url']
     return image_url
@@ -95,7 +104,7 @@ def answer_question_about_document(question):
         return "No document has been uploaded. Please upload a document to use this feature."
     retriever = st.session_state.vectorstore.as_retriever()
     qa_chain = RetrievalQA.from_chain_type(
-        llm=ChatOpenAI(model_name="gpt-4o-mini"),
+        llm=ChatOpenAI(model_name="gpt-3.5-turbo"),
         chain_type="stuff",
         retriever=retriever
     )
@@ -114,7 +123,7 @@ memory = ConversationBufferMemory(memory_key="chat_history", return_messages=Tru
 agent_kwargs = {
     "extra_prompt_messages": [MessagesPlaceholder(variable_name="chat_history")]
 }
-llm = ChatOpenAI(model_name="gpt-4o-mini", streaming=True)
+llm = ChatOpenAI(model_name="gpt-3.5-turbo", streaming=True)
 agent = initialize_agent(
     tools,
     llm,
@@ -150,5 +159,5 @@ if prompt := st.chat_input("Type your message here..."):
         st.write(response)
 
         # If the response contains an image URL, display the image
-        if "http" in response and ("png" in response or "jpg" in response or "jpeg" in response):
+        if response.startswith("http"):
             st.image(response)
