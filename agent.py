@@ -5,7 +5,7 @@ from langchain.memory import ConversationBufferMemory
 from langchain.prompts import MessagesPlaceholder
 from langchain.schema import SystemMessage
 from langchain.callbacks import StreamlitCallbackHandler
-from langchain.chat_models import ChatOpenAI  # Add this import
+from langchain.chat_models import ChatOpenAI
 
 def initialize_langchain_agent(tools, model_name="gpt-4o-mini", openai_api_key=None):
     """
