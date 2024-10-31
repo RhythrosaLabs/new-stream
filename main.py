@@ -82,10 +82,15 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### Additional Tools Coming Soon!")
 
-# Check for OpenAI API key
+# Validate API Keys
 if not openai_api_key:
     st.warning("Please enter your OpenAI API key to use the app.")
     st.stop()
+
+if not stability_api_key:
+    st.warning("Please enter your Stability AI API key to enable Image Generation.")
+    # Note: Decide whether to stop or allow other functionalities to work
+    # Here, we allow other functionalities to work, but image generation won't be available
 
 # Set OpenAI API key
 os.environ["OPENAI_API_KEY"] = openai_api_key
@@ -166,7 +171,7 @@ def generate_image(prompt: str) -> str:
     """
     if not stability_api_key:
         return "Stability AI API key not provided."
-
+    
     url = "https://api.stability.ai/v2beta/stable-image/generate/ultra"
     headers = {
         "authorization": f"Bearer {stability_api_key}",
@@ -177,9 +182,9 @@ def generate_image(prompt: str) -> str:
     }
     data = {
         "prompt": prompt,
-        "output_format": "png",  # Options: "jpeg", "png", "webp"
-        "size": "1024x1024",     # Options: "1024x1024", "1024x1792", "1792x1024"
-        "quality": "standard"    # Options: "standard", "hd"
+        "output_format": "png",     # Options: "jpeg", "png", "webp"
+        "size": "1024x1024",        # Options: "1024x1024", "1024x1792", "1792x1024"
+        "quality": "standard"       # Options: "standard", "hd"
     }
     
     try:
@@ -196,7 +201,11 @@ def generate_image(prompt: str) -> str:
             data_url = f"data:image/png;base64,{encoded_image}"
             return data_url
         else:
-            error_message = response.json().get('error', 'Unknown error occurred.')
+            # Attempt to parse error message
+            try:
+                error_message = response.json().get('error', 'Unknown error occurred.')
+            except:
+                error_message = "Unknown error occurred."
             return f"Error generating image: {error_message}"
     except Exception as e:
         return f"Error generating image: {e}"
@@ -242,7 +251,10 @@ document_qa_tool = Tool(
 )
 tools.append(document_qa_tool)
 
-# Initialize the agent with all tools
+# ============================
+# Initialize the Agent
+# ============================
+
 memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 agent_kwargs = {
     "extra_prompt_messages": [MessagesPlaceholder(variable_name="chat_history")]
@@ -292,8 +304,11 @@ if prompt := st.chat_input("Type your message here..."):
         # Check if the response is a data URL for an image
         if response.startswith("data:image"):
             # Extract the base64 part and decode it
-            header, encoded = response.split(",", 1)
-            image_bytes = base64.b64decode(encoded)
-            st.image(image_bytes, caption="Generated Image")
+            try:
+                header, encoded = response.split(",", 1)
+                image_bytes = base64.b64decode(encoded)
+                st.image(image_bytes, caption="Generated Image")
+            except Exception as e:
+                st.error(f"Error displaying image: {e}")
         else:
             st.write(response)
