@@ -42,11 +42,7 @@ with tab1:
             uploaded_file = st.file_uploader("Upload a file to analyze", type=("txt", "md", "pdf"))
             if uploaded_file:
                 article = uploaded_file.read().decode()
-                file_prompt = f"{anthropic.HUMAN_PROMPT} Here's a file:
-
-{article}
-
-{prompt}{anthropic.AI_PROMPT}"
+                file_prompt = f"{anthropic.HUMAN_PROMPT} Here's a file:\n\n{article}\n\n{prompt}{anthropic.AI_PROMPT}"
                 client = anthropic.Client(api_key=anthropic_api_key)
                 response = client.completions.create(
                     prompt=file_prompt,
