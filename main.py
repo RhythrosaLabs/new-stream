@@ -1,12 +1,11 @@
 """
 All-in-One AI Assistant
 =======================
-
-A Streamlit web application that integrates:
+Integrates:
 - OpenAI's GPT models for general chat.
 - Anthropic's Claude for File Q&A.
 - LangChain for Web Search.
-- OpenAI's DALL·E for Image Generation.
+- OpenAI's DALL·E 3 for Image Generation.
 
 Features:
 - Single chat interface to interact with all functionalities.
@@ -147,7 +146,7 @@ tools.append(search_tool)
 # Image Generation Tool
 def generate_image(prompt: str) -> str:
     """
-    Generates an image based on the provided prompt using OpenAI's DALL-E model.
+    Generates an image based on the provided prompt using OpenAI's DALL·E 3 model.
 
     Args:
         prompt (str): The text prompt to generate the image.
@@ -157,10 +156,12 @@ def generate_image(prompt: str) -> str:
     """
     try:
         response = openai.Image.create(
+            model="dall-e-3",
             prompt=prompt,
             size="1024x1024",
             n=1,
-            response_format="url"
+            response_format="url",
+            quality="standard"  # Options: "standard", "hd"
         )
         image_url = response['data'][0]['url']
         return image_url
@@ -213,12 +214,6 @@ memory = ConversationBufferMemory(memory_key="chat_history", return_messages=Tru
 agent_kwargs = {
     "extra_prompt_messages": [MessagesPlaceholder(variable_name="chat_history")]
 }
-
-# Use Anthropic's Claude for document Q&A
-if anthropic_api_key:
-    anthropic_client = anthropic.Client(api_key=anthropic_api_key)
-else:
-    anthropic_client = None
 
 llm = ChatOpenAI(model_name="gpt-4", openai_api_key=openai_api_key, streaming=True)
 agent = initialize_agent(
